@@ -1,769 +1,722 @@
 /**
-main.cpp — Интерактивное меню управления симуляцией.
-Запуск:
-./netsim          — интерактивное меню
-./netsim --quick  — повтор последних настроек
+ main.cpp — точка входа NetSim (ВКР).
+ Режимы:
+   netsim                     — интерактивное меню
+   netsim run --config f.ini  — пакетный запуск (используется GUI)
+   netsim selftest            — самопроверка ядра
+   netsim version             — версия
 */
-#include "topology.h"
+#include "config.h"
+#include "csv_export.h"
 #include "engine.h"
 #include "experiments.h"
-#include "csv_export.h"
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <map>
+#include "qos.h"
+#include "topology.h"
+
 #include <algorithm>
-#include <numeric>
+#include <cctype>
 #include <cmath>
-#include <stdexcept>
-#include <iomanip>
-#include <limits>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
-#define ANSI_RESET    "\033[0m"
-#define ANSI_BOLD     "\033[1m"
-#define ANSI_GREEN    "\033[92m"
-#define ANSI_YELLOW   "\033[93m"
-#define ANSI_RED      "\033[91m"
-#define ANSI_DIM      "\033[90m"
-#define ANSI_CYAN     "\033[96m"
-#else
-#define ANSI_RESET    "\033[0m"
-#define ANSI_BOLD     "\033[1m"
-#define ANSI_GREEN    "\033[92m"
-#define ANSI_YELLOW   "\033[93m"
-#define ANSI_RED      "\033[91m"
-#define ANSI_DIM      "\033[90m"
-#define ANSI_CYAN     "\033[96m"
 #endif
 
 namespace fs = std::filesystem;
+using namespace netsim;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Форматирование
-// ────────────────────────────────────────────────────────────────────────────
-static void hr(char c = '-', int w = 68) {
-    for (int i = 0; i < w; ++i) std::cout << c;
+namespace {
+
+constexpr const char* kVersion = "2.0.0";
+
+#ifdef _WIN32
+constexpr const char* kReset = "\033[0m";
+constexpr const char* kBold = "\033[1m";
+constexpr const char* kGreen = "\033[92m";
+constexpr const char* kYellow = "\033[93m";
+constexpr const char* kRed = "\033[91m";
+constexpr const char* kDim = "\033[90m";
+constexpr const char* kCyan = "\033[96m";
+#else
+constexpr const char* kReset = "\033[0m";
+constexpr const char* kBold = "\033[1m";
+constexpr const char* kGreen = "\033[92m";
+constexpr const char* kYellow = "\033[93m";
+constexpr const char* kRed = "\033[91m";
+constexpr const char* kDim = "\033[90m";
+constexpr const char* kCyan = "\033[96m";
+#endif
+
+void hr(char c = '-', int width = 78) {
+    for (int i = 0; i < width; ++i) std::cout << c;
     std::cout << '\n';
 }
 
-static void header(const std::string& title) {
+void header(const std::string& title) {
     hr('=');
-    int title_len = (int)title.size();
-    int pad = 68 - title_len - 2;
-    if (pad < 0) pad = 0;
-    pad /= 2;
-    std::cout << "   " << std::string(pad, ' ')
-        << ANSI_BOLD << title << ANSI_RESET << '\n';
+    std::cout << "  " << kBold << title << kReset << '\n';
     hr('=');
 }
 
-static void section(const std::string& title) {
-    std::cout << "\n  ┌─ " << title << '\n';
+void progressPrinter(double fraction, const std::string& stage) {
+    std::cout << "PROGRESS " << std::fixed << std::setprecision(4)
+              << fraction << " " << stage << "\n"
+              << std::flush;
 }
 
-static void hint(const std::string& msg) {
-    std::cout << "  │   " << ANSI_DIM << msg << ANSI_RESET << '\n';
+std::string lower(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return text;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Функции ввода с валидацией
-// ─────────────────────────────────────────────────────────────────────────────
-static int askInt(const std::string& prompt, int lo, int hi, int def) {
-    hint("Тип: int  |  Диапазон: [" + std::to_string(lo) + "…" + std::to_string(hi) +
-        "]  |  По умолчанию: " + std::to_string(def));
+// ---------------------------------------------------------------------------
+// Интерактивные помощники
+// ---------------------------------------------------------------------------
+std::string askString(const std::string& prompt, const std::string& def) {
+    std::cout << "  " << kBold << prompt << kReset << " [" << def << "]: ";
+    std::string line;
+    std::getline(std::cin, line);
+    return line.empty() ? def : line;
+}
+
+int askInt(const std::string& prompt, int lo, int hi, int def) {
     while (true) {
-        std::cout << "  │   " << ANSI_BOLD << prompt << ANSI_RESET << '\n' << "  │   > ";
-        std::string raw; std::getline(std::cin, raw);
-        if (raw.empty()) {
-            std::cout << "  │   " << ANSI_GREEN << "Принято: " << def << ANSI_RESET << '\n';
-            return def;
-        }
+        const std::string raw = askString(prompt, std::to_string(def));
         try {
-            int val = std::stoi(raw);
-            if (val >= lo && val <= hi) {
-                std::cout << "  │   " << ANSI_GREEN << "Принято: " << val << ANSI_RESET << '\n';
-                return val;
-            }
-            std::cout << "  │   " << ANSI_RED << "Ошибка: введите от " << lo << " до " << hi << ANSI_RESET << '\n';
+            const int value = std::stoi(raw);
+            if (value >= lo && value <= hi) return value;
+        } catch (...) {
         }
-        catch (...) {
-            std::cout << "  │   " << ANSI_RED << "Ошибка: введите целое число." << ANSI_RESET << '\n';
-        }
+        std::cout << "  " << kRed << "Ожидается целое " << lo << ".." << hi
+                  << kReset << '\n';
     }
 }
 
-static double askFloat(const std::string& prompt, double lo, double hi, double def) {
+double askDouble(const std::string& prompt, double lo, double hi, double def) {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(3);
-    oss << "Тип: float  |  Диапазон: [" << lo << "…" << hi << "]  |  По умолчанию: " << def;
-    hint(oss.str());
+    oss << std::fixed << std::setprecision(3) << def;
     while (true) {
-        std::cout << "  │   " << ANSI_BOLD << prompt << ANSI_RESET << '\n' << "  │   > ";
-        std::string raw; std::getline(std::cin, raw);
-        if (raw.empty()) {
-            std::cout << "  │   " << ANSI_GREEN << "Принято: " << def << ANSI_RESET << '\n';
-            return def;
-        }
-        std::replace(raw.begin(), raw.end(), ',', '.');
+        const std::string raw = askString(prompt, oss.str());
         try {
-            double val = std::stod(raw);
-            if (val >= lo && val <= hi) {
-                std::cout << "  │   " << ANSI_GREEN << "Принято: " << val << ANSI_RESET << '\n';
-                return val;
-            }
-            std::cout << "  │   " << ANSI_RED << "Ошибка: значение от " << lo << " до " << hi << ANSI_RESET << '\n';
+            std::string normalized = raw;
+            std::replace(normalized.begin(), normalized.end(), ',', '.');
+            const double value = std::stod(normalized);
+            if (value >= lo && value <= hi) return value;
+        } catch (...) {
         }
-        catch (...) {
-            std::cout << "  │   " << ANSI_RED << "Ошибка: введите число." << ANSI_RESET << '\n';
-        }
+        std::cout << "  " << kRed << "Ожидается число " << lo << ".." << hi
+                  << kReset << '\n';
     }
 }
 
-static std::string askChoice(const std::string& prompt,
-    const std::vector<std::string>& options,
-    const std::string& def,
-    const std::map<std::string, std::string>& descs = {}) {
-    std::ostringstream oss;
-    for (int i = 0; i < (int)options.size(); ++i) oss << (i ? "|" : "") << options[i];
-    hint("Варианты: " + oss.str() + "  |  По умолчанию: " + def);
-    for (auto& o : options) {
-        std::string mark = (o == def) ? "  ← " : " ";
-        std::cout << "  │     " << ANSI_CYAN << std::left << std::setw(15) << o << ANSI_RESET;
-        if (descs.count(o)) std::cout << descs.at(o);
-        std::cout << mark << '\n';
-    }
+bool askBool(const std::string& prompt, bool def) {
+    const std::string raw =
+        lower(askString(prompt + " (да/нет)", def ? "да" : "нет"));
+    return raw == "да" || raw == "yes" || raw == "y" || raw == "1" ||
+           raw == "true";
+}
+
+std::string askChoice(const std::string& prompt,
+                      const std::vector<std::string>& options,
+                      const std::string& def) {
+    std::cout << "  Варианты: ";
+    for (size_t i = 0; i < options.size(); ++i)
+        std::cout << (i ? " | " : "") << options[i];
+    std::cout << '\n';
     while (true) {
-        std::cout << "  │   " << ANSI_BOLD << prompt << ANSI_RESET << '\n' << "  │   > ";
-        std::string raw; std::getline(std::cin, raw);
-        if (raw.empty()) {
-            std::cout << "  │   " << ANSI_GREEN << "Принято: " << def << ANSI_RESET << '\n';
-            return def;
-        }
-        for (auto& o : options)
-            if (raw == o) {
-                std::cout << "  │   " << ANSI_GREEN << "Принято: " << raw << ANSI_RESET << '\n';
-                return raw;
-            }
-        std::cout << "  │   " << ANSI_RED << "Выберите одно из приведённых вариантов." << ANSI_RESET << '\n';
+        const std::string raw = lower(askString(prompt, def));
+        for (const auto& option : options)
+            if (raw == option) return option;
+        std::cout << "  " << kRed << "Выберите вариант из списка" << kReset
+                  << '\n';
     }
 }
 
-static std::vector<std::string> askMultiChoice(const std::string& prompt,
-    const std::vector<std::string>& options,
-    const std::vector<std::string>& def) {
-    std::ostringstream d;
-    for (int i = 0; i < (int)def.size(); ++i) d << (i ? ", " : "") << def[i];
-    hint("Введите через запятую. Варианты: " + [&]() {
-        std::string s; for (auto& o : options) s += o + ", "; return s;
-        }());
-    hint("По умолчанию: " + d.str());
+std::vector<std::string> askMultiChoice(
+    const std::string& prompt, const std::vector<std::string>& options,
+    const std::vector<std::string>& defaults) {
+    std::cout << "  Доступно: ";
+    for (size_t i = 0; i < options.size(); ++i)
+        std::cout << (i ? ", " : "") << options[i];
+    std::cout << '\n';
+
+    std::string default_text;
+    for (size_t i = 0; i < defaults.size(); ++i)
+        default_text += (i ? "," : "") + defaults[i];
+
     while (true) {
-        std::cout << "  │   " << ANSI_BOLD << prompt << ANSI_RESET << '\n' << "  │   > ";
-        std::string raw; std::getline(std::cin, raw);
-        if (raw.empty()) {
-            std::cout << "  │   " << ANSI_GREEN << "Принято: " << d.str() << ANSI_RESET << '\n';
-            return def;
-        }
-        std::vector<std::string> chosen;
-        std::istringstream ss(raw);
+        const std::string raw = askString(prompt, default_text);
+        std::vector<std::string> result;
         std::string token;
+        std::istringstream stream(raw);
         bool ok = true;
-        while (std::getline(ss, token, ',')) {
-            while (!token.empty() && token.front() == ' ') token.erase(token.begin());
-            while (!token.empty() && token.back() == ' ')  token.pop_back();
-            if (std::find(options.begin(), options.end(), token) == options.end()) {
-                std::cout << "  │   " << ANSI_RED << "Неизвестный вариант: " << token << ANSI_RESET << '\n';
-                ok = false; break;
+        while (std::getline(stream, token, ',')) {
+            token = trim(token);
+            if (token.empty()) continue;
+            const std::string value = lower(token);
+            if (std::find(options.begin(), options.end(), value) ==
+                options.end()) {
+                ok = false;
+                break;
             }
-            chosen.push_back(token);
+            result.push_back(value);
         }
-        if (!ok || chosen.empty()) continue;
-        std::cout << "  │   " << ANSI_GREEN << "Принято." << ANSI_RESET << '\n';
-        return chosen;
+        if (ok && !result.empty()) return result;
+        std::cout << "  " << kRed << "Неизвестный вариант" << kReset << '\n';
     }
 }
 
-static bool askBool(const std::string& prompt, bool def) {
-    hint(std::string("Тип: bool  |  Варианты: да/нет  |  По умолчанию: ") + (def ? "да" : "нет"));
-    while (true) {
-        std::cout << "  │   " << ANSI_BOLD << prompt << ANSI_RESET << '\n' << "  │   > ";
-        std::string raw; std::getline(std::cin, raw);
-        if (raw.empty()) {
-            std::cout << "  │   " << ANSI_GREEN << "Принято: " << (def ? "да" : "нет") << ANSI_RESET << '\n';
-            return def;
-        }
-        std::transform(raw.begin(), raw.end(), raw.begin(), ::tolower);
-        if (raw == "да" || raw == "yes" || raw == "y" || raw == "1" || raw == "true") {
-            std::cout << "  │   " << ANSI_GREEN << "Принято: да" << ANSI_RESET << '\n';
-            return true;
-        }
-        if (raw == "нет" || raw == "no" || raw == "n" || raw == "0" || raw == "false") {
-            std::cout << "  │   " << ANSI_GREEN << "Принято: нет" << ANSI_RESET << '\n';
-            return false;
-        }
-        std::cout << "  │   " << ANSI_RED << "Введите: да / нет" << ANSI_RESET << '\n';
-    }
-}
-
-static std::vector<double> askLinspace(const std::string& prompt,
-    double lo, double hi,
-    double def_lo, double def_hi, int def_n) {
-    std::ostringstream oss;
-    oss << "Формат: MIN MAX [ТОЧЕК]  (например: " << def_lo << " " << def_hi << " " << def_n << ")";
-    hint(oss.str());
-    while (true) {
-        std::cout << "  │   " << ANSI_BOLD << prompt << ANSI_RESET << '\n' << "  │   > ";
-        std::string raw; std::getline(std::cin, raw);
-        if (raw.empty()) {
-            std::vector<double> r;
-            for (int i = 0; i < def_n; ++i)
-                r.push_back(def_lo + (def_hi - def_lo) * i / (def_n - 1));
-            std::cout << "  │   " << ANSI_GREEN << "Принято: linspace(" << def_lo << ", " << def_hi << ", " << def_n << ")" << ANSI_RESET << '\n';
-            return r;
-        }
-        std::replace(raw.begin(), raw.end(), ',', '.');
-        std::istringstream ss(raw);
-        double v_min, v_max; int n_pts = def_n;
-        if (!(ss >> v_min >> v_max)) {
-            std::cout << "  │   " << ANSI_RED << "Формат: MIN MAX  или  MIN MAX ТОЧЕК" << ANSI_RESET << '\n';
-            continue;
-        }
-        ss >> n_pts;
-        if (v_min >= v_max || v_min < lo || v_max > hi) {
-            std::cout << "  │   " << ANSI_RED << "MIN < MAX, оба в [" << lo << ", " << hi << "]" << ANSI_RESET << '\n';
-            continue;
-        }
-        if (n_pts < 2 || n_pts > 50) {
-            std::cout << "  │   " << ANSI_RED << "Точек: 2–50" << ANSI_RESET << '\n';
-            continue;
-        }
-        std::vector<double> r;
-        for (int i = 0; i < n_pts; ++i)
-            r.push_back(v_min + (v_max - v_min) * i / (n_pts - 1));
-        std::cout << "  │   " << ANSI_GREEN << "Принято." << ANSI_RESET << '\n';
-        return r;
-    }
-}
-
-static std::vector<double> askFloatList(const std::string& prompt,
-    double lo, double hi,
-    std::vector<double> def) {
-    std::ostringstream d;
-    for (auto v : def) d << v << " ";
-    hint("Введите числа через пробел. Диапазон: [" + std::to_string(lo) + "…" + std::to_string(hi) + "]");
-    hint("По умолчанию: " + d.str());
-    while (true) {
-        std::cout << "  │   " << ANSI_BOLD << prompt << ANSI_RESET << '\n' << "  │   > ";
-        std::string raw; std::getline(std::cin, raw);
-        if (raw.empty()) {
-            std::cout << "  │   " << ANSI_GREEN << "Принято." << ANSI_RESET << '\n';
-            return def;
-        }
-        std::istringstream ss(raw);
-        std::vector<double> vals;
-        double v;
-        bool bad = false;
-        while (ss >> v) {
-            if (v < lo || v > hi) { bad = true; break; }
-            vals.push_back(v);
-        }
-        std::sort(vals.begin(), vals.end());
-        vals.erase(std::unique(vals.begin(), vals.end()), vals.end());
-        if (bad || vals.size() < 2 || vals.size() > 20) {
-            std::cout << "  │   " << ANSI_RED << "Минимум 2, максимум 20 значений в диапазоне." << ANSI_RESET << '\n';
-            continue;
-        }
-        std::cout << "  │   " << ANSI_GREEN << "Принято." << ANSI_RESET << '\n';
-        return vals;
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Структура конфигурации
-// ─────────────────────────────────────────────────────────────────────────────
-struct Config {
-    int         num_nodes = 50;
-    int         n_sims = 30;
-    double      T = 150.0;
-    double      attack_lambda = 1.0;
-    double      global_resources = 200.0;
-    std::string attack_strategy = "targeted";
-    std::string gatekeeper = "fifo";
-    int         repair_slots = 1;
-    bool        heterogeneous = false;
-    double      base_P_attack = 0.60;
-    double      base_P_recovery = 0.80;
-    double      base_mu = 0.20;
-    std::string out_dir = "results";
-    int         sample_points = 200;
-    std::vector<std::string> topologies = { "star", "ring", "full_mesh", "erdos_renyi", "barabasi_albert" };
-    std::vector<std::string> attack_strategies = { "targeted", "random", "cascading" };
-    std::vector<double>      resource_levels = { 50, 100, 200, 500 };
-    std::map<std::string, std::vector<double>> sweep_ranges;
-    std::vector<std::string> sweep_params;
-};
-
-static TopoKwargs cfgToTK(const Config& c) {
-    TopoKwargs tk;
-    tk.base_P_attack = c.base_P_attack;
-    tk.base_P_recovery = c.base_P_recovery;
-    tk.base_mu = c.base_mu;
-    tk.heterogeneous = c.heterogeneous;
-    return tk;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Базовые общие параметры
-// ─────────────────────────────────────────────────────────────────────────────
-static void setupCommon(Config& c) {
-    section("Базовые параметры");
-    c.num_nodes = askInt("Количество узлов N", 5, 200, c.num_nodes);
-    c.n_sims = askInt("Симуляций Монте-Карло (n_sims)", 1, 500, c.n_sims);
-    c.T = askFloat("Горизонт моделирования T", 10.0, 1000.0, c.T);
-    c.attack_lambda = askFloat("Интенсивность атак λ (атак/ед.вр.)", 0.01, 20.0, c.attack_lambda);
-    c.global_resources = askFloat("Глобальный ресурс R_total", 0.0, 10000.0, c.global_resources);
-    c.repair_slots = askInt("Слотов ремонта за шаг (repair_slots)", 1, 20, c.repair_slots);
-    section("Параметры узлов");
-    c.heterogeneous = askBool("Гетерогенная сеть? (server/switch/host)", c.heterogeneous);
-    if (!c.heterogeneous) {
-        c.base_P_attack = askFloat("P_attack (вер-ть успеха атаки)", 0.01, 0.99, c.base_P_attack);
-        c.base_P_recovery = askFloat("P_recovery (вер-ть успешного ремонта)", 0.01, 0.99, c.base_P_recovery);
-        c.base_mu = askFloat("μ (интенсивность восстановления)", 0.01, 1.0, c.base_mu);
-    }
-    c.out_dir = "results";
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Отображение сводки
-// ─────────────────────────────────────────────────────────────────────────────
-static void printSummary(const std::string& scenario, const Config& c) {
+// ---------------------------------------------------------------------------
+// Печать таблиц
+// ---------------------------------------------------------------------------
+void printTopologyTable(const TopoCompResult& comparison) {
     hr();
-    std::cout << "  Сценарий: " << ANSI_BOLD << scenario << ANSI_RESET << '\n';
-    std::cout << "  N=" << c.num_nodes << "  n_sims=" << c.n_sims << "  T=" << c.T
-        << "  λ=" << c.attack_lambda << "  R=" << c.global_resources << '\n';
-    hr();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Консольные отчёты
-// ─────────────────────────────────────────────────────────────────────────────
-static void printTopoReport(const TopoCompResult& comp) {
-    hr();
-    std::cout << ANSI_BOLD << "  Результаты сравнения топологий:\n" << ANSI_RESET;
-    std::cout << "   " << std::left << std::setw(12) << "Топология"
-        << std::setw(14) << "LCC (±CI)"
-        << std::setw(14) << "E_norm (±CI)"
-        << std::setw(14) << "φ_w (±CI)" << '\n';
-    hr('-', 56);
-    for (auto& [topo, mc] : comp.results) {
-        std::cout << std::fixed << std::setprecision(3);
-        std::cout << "   " << std::left << std::setw(12) << topo
-            << std::setw(14) << (std::to_string(mc.lcc_mean).substr(0, 5) + "±" + std::to_string(mc.lcc_ci).substr(0, 5))
-            << std::setw(14) << (std::to_string(mc.eff_mean).substr(0, 5) + "±" + std::to_string(mc.eff_ci).substr(0, 5))
-            << std::setw(14) << (std::to_string(mc.wsurv_mean).substr(0, 5) + "±" + std::to_string(mc.wsurv_ci).substr(0, 5))
-            << '\n';
+    std::cout << kBold << "  Сравнение топологий\n" << kReset;
+    std::cout << "  " << std::left << std::setw(20) << "Топология"
+              << std::setw(12) << "E_QoS"
+              << std::setw(12) << "Q-доля"
+              << std::setw(12) << "LCC"
+              << std::setw(12) << "φ_w"
+              << std::setw(12) << "IPTD,мс"
+              << std::setw(12) << "IPLR" << '\n';
+    hr('-', 92);
+    std::cout << std::fixed << std::setprecision(3);
+    for (const auto& [topo, mc] : comparison.results) {
+        std::cout << "  " << std::left << std::setw(20) << topo
+                  << std::setw(12) << mc.e_qos.mean
+                  << std::setw(12) << mc.qos_ratio.mean
+                  << std::setw(12) << mc.lcc.mean
+                  << std::setw(12) << mc.phi_w.mean
+                  << std::setw(12) << mc.iptd_ms.mean
+                  << std::setw(12) << mc.iplr.mean << '\n';
     }
     hr();
 }
 
-// ── НОВОЕ: Вывод статистики временных рядов ──────────────────────────────────
-static void printTimeSeriesStats(const std::string& topo, const SimResult& res) {
+void printStrategyTable(const StrategyResults& results,
+                        const std::vector<double>& levels) {
     hr();
-    std::cout << ANSI_BOLD << "  Временные ряды — " << topo << ANSI_RESET << '\n';
-    hr('-', 60);
-
-    auto mean_vec = [](const std::vector<double>& v) {
-        return v.empty() ? 0.0 : std::accumulate(v.begin(), v.end(), 0.0) / v.size();
-        };
-
-    std::cout << std::fixed << std::setprecision(4);
-    std::cout << "    LCC (среднее)            : " << mean_vec(res.lcc_history) << '\n';
-    std::cout << "    E_norm (среднее)         : " << mean_vec(res.eff_norm_history) << '\n';
-    std::cout << "    Взвеш. живучесть (сред.) : " << mean_vec(res.weighted_surv_history) << '\n';
-    std::cout << "    Первый отказ (время)     : " << res.first_failure_time << '\n';
-    std::cout << "    Потреблено ресурсов      : " << res.resources_consumed << '\n';
-    std::cout << "    Истощение ресурсов       : " << (res.global_resource_exhausted ? "ДА" : "НЕТ") << '\n';
-    std::cout << "    Успешных восстановлений  : " << res.recoveries_success << '\n';
-    std::cout << "    Неудачных попыток        : " << res.recoveries_failed << '\n';
-    hr();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Сценарии
-// ─────────────────────────────────────────────────────────────────────────────
-static void runTopology(const Config& c) {
-    fs::create_directories(c.out_dir);
-    TopoKwargs tk = cfgToTK(c);
-    auto comp = runTopologyComparison(
-        c.topologies, c.num_nodes, tk, c.T,
-        c.attack_lambda, c.global_resources,
-        c.attack_strategy, c.gatekeeper, c.n_sims, c.repair_slots);
-    printTopoReport(comp);
-    exportTopologyComparison(comp, c.out_dir + "/topology_comparison.csv");
-}
-
-static void runSweep(Config& c) {
-    fs::create_directories(c.out_dir);  // ← ИСПРАВЛЕНО: было std::system("mkdir -p ...")
-    if (c.sweep_ranges.empty()) {
-        c.sweep_ranges["lambda"] = askLinspace("λ: MIN MAX [ТОЧЕК]", 0.1, 10.0, 0.5, 5.0, 8);
-        c.sweep_ranges["resources"] = askLinspace("R: MIN MAX [ТОЧЕК]", 10, 2000, 50, 1000, 8);
-        c.sweep_ranges["mu"] = askLinspace("μ: MIN MAX [ТОЧЕК]", 0.05, 0.8, 0.05, 0.8, 8);
-        c.sweep_ranges["P_attack"] = askLinspace("P_attack: MIN MAX [ТОЧЕК]", 0.1, 0.95, 0.3, 0.95, 8);
-        c.sweep_params = { "lambda", "resources", "mu", "P_attack" };
-    }
-    std::map<std::string, double> fixed;
-    fixed["lambda"] = c.attack_lambda;
-    fixed["resources"] = c.global_resources;
-    fixed["P_attack"] = c.base_P_attack;
-    fixed["P_recovery"] = c.base_P_recovery;
-    fixed["mu"] = c.base_mu;
-    fixed["heterogeneous"] = c.heterogeneous ? 1.0 : 0.0;
-
-    std::map<std::string, std::map<std::string, SweepResult>> sweep_data;
-    for (const auto& param : c.sweep_params) {
-        for (const auto& topo : c.topologies) {
-            std::cout << "   sweep: " << param << " / " << topo << '\n' << std::flush;
-            sweep_data[param][topo] = runParameterSweep(
-                param, c.sweep_ranges[param], fixed,
-                topo, c.num_nodes,
-                c.attack_strategy, c.gatekeeper,
-                c.n_sims, c.T, c.repair_slots);
+    std::cout << kBold << "  FIFO vs Triage (E_QoS)\n" << kReset;
+    for (const auto& [topo, gk_map] : results) {
+        std::cout << "\n  [" << topo << "]\n  " << std::left << std::setw(10)
+                  << "R" << std::setw(12) << "FIFO" << std::setw(12)
+                  << "Triage" << std::setw(10) << "p" << "Значимость\n";
+        for (double r : levels) {
+            auto it = gk_map.at("fifo").find(r);
+            if (it == gk_map.at("fifo").end()) continue;
+            const auto& fifo = it->second;
+            const auto& triage = gk_map.at("triage").at(r);
+            std::cout << std::fixed << std::setprecision(3) << "  "
+                      << std::left << std::setw(10) << r
+                      << std::setw(12) << fifo.mc.e_qos.mean
+                      << std::setw(12) << triage.mc.e_qos.mean
+                      << std::setw(10) << fifo.sig.p_raw
+                      << fifo.sig.direction << '\n';
         }
+    }
+    hr();
+}
 
-        hr();
-        std::cout << ANSI_BOLD << "  Sweep: " << param << " (LCC)" << ANSI_RESET << '\n';
-        std::vector<std::string> ordered_topos = { "star", "ring", "full_mesh" };
-        std::cout << "   " << std::left << std::setw(10) << "X_value"
-            << std::setw(15) << "STAR"
-            << std::setw(15) << "RING"
-            << std::setw(15) << "FULL_MESH" << '\n';
-        hr('-', 58);
-        const auto& xs = c.sweep_ranges[param];
-        for (int i = 0; i < (int)xs.size(); ++i) {
-            std::cout << std::fixed << std::setprecision(2);
-            std::cout << "   " << std::left << std::setw(10) << xs[i];
-            for (const auto& topo : ordered_topos) {
-                if (sweep_data[param].count(topo)) {
-                    double lcc = sweep_data[param][topo].lcc_means[i];
-                    std::cout << std::setw(15) << std::setprecision(3) << lcc;
+// ---------------------------------------------------------------------------
+// Запуск сценариев
+// ---------------------------------------------------------------------------
+int runScenario(SimConfig config, const std::string& scenario,
+                const std::string& out_dir, bool show_progress = false) {
+    config.scenario = scenario;
+    config.out_dir = out_dir;
+    std::filesystem::create_directories(out_dir);
+
+    std::string error;
+    if (!config.validate(error)) {
+        std::cerr << "Ошибка конфигурации: " << error << "\n";
+        return 2;
+    }
+    if (!config.saveToFile(out_dir + "/config.ini", error)) {
+        std::cerr << "Предупреждение: " << error << "\n";
+    }
+
+    const ProgressFn progress =
+        show_progress ? ProgressFn(progressPrinter) : ProgressFn{};
+
+    try {
+        if (scenario == "topology") {
+            const auto comparison = runTopologyComparison(
+                config, config.topologies, config.n_sims, progress);
+            printTopologyTable(comparison);
+            for (const auto& [topo, mc] : comparison.results) {
+                if (mc.baseline_qos_rate < 0.999) {
+                    std::cout << kYellow << "  Внимание: для топологии " << topo
+                              << " доля прогонов с E0_QoS > 0 составляет "
+                              << std::fixed << std::setprecision(3)
+                              << mc.baseline_qos_rate
+                              << ". Проверьте класс QoS и нагрузку." << kReset
+                              << "\n";
                 }
             }
-            std::cout << '\n';
-        }
-        hr();
-
-        std::cout << "\n" << ANSI_BOLD << "  Sweep: " << param << " (φ_w)" << ANSI_RESET << '\n';
-        std::cout << "   " << std::left << std::setw(10) << "X_value"
-            << std::setw(15) << "STAR"
-            << std::setw(15) << "RING"
-            << std::setw(15) << "FULL_MESH" << '\n';
-        hr('-', 58);
-        for (int i = 0; i < (int)xs.size(); ++i) {
-            std::cout << std::fixed << std::setprecision(2);
-            std::cout << "   " << std::left << std::setw(10) << xs[i];
-            for (const auto& topo : ordered_topos) {
-                if (sweep_data[param].count(topo)) {
-                    double wsurv = sweep_data[param][topo].wsurv_means[i];
-                    std::cout << std::setw(15) << std::setprecision(3) << wsurv;
+            exportTopologyComparison(comparison,
+                                     out_dir + "/topology_comparison.csv");
+            exportTopologySignificance(
+                comparison, out_dir + "/topology_significance.csv");
+        } else if (scenario == "sweep") {
+            config.ensureDefaultSweepRanges();
+            std::map<std::string, std::map<std::string, SweepResult>> data;
+            const int total = std::max(
+                1, static_cast<int>(config.sweep_params.size() *
+                                    config.topologies.size()));
+            int done = 0;
+            for (const auto& param : config.sweep_params) {
+                auto range_it = config.sweep_ranges.find(param);
+                if (range_it == config.sweep_ranges.end()) continue;
+                for (const auto& topo : config.topologies) {
+                    const int offset = done;
+                    data[param][topo] = runParameterSweep(
+                        config, param, range_it->second, topo, config.n_sims,
+                        [&, offset, total](double f, const std::string& stage) {
+                            progressPrinter((offset + f) / total,
+                                            param + " / " + topo + ": " + stage);
+                        });
+                    ++done;
                 }
             }
-            std::cout << '\n';
-        }
-        hr();
-        
-        std::cout << "\n" << ANSI_BOLD << "  Sweep: " << param << " (E_norm)" << ANSI_RESET << '\n';
-        std::cout << "   " << std::left << std::setw(10) << "X_value"
-            << std::setw(15) << "STAR"
-            << std::setw(15) << "RING"
-            << std::setw(15) << "FULL_MESH" << '\n';
-        hr('-', 58);
-
-        for (int i = 0; i < (int)xs.size(); ++i) {
-            std::cout << std::fixed << std::setprecision(2);
-            std::cout << "   " << std::left << std::setw(10) << xs[i];
-            for (const auto& topo : ordered_topos) {
-                if (sweep_data[param].count(topo)) {
-                    double eff = sweep_data[param][topo].eff_means[i];
-                    std::cout << std::setw(15) << std::setprecision(3) << eff;
+            exportParameterSweep(data, config.sweep_ranges, out_dir);
+        } else if (scenario == "strategy") {
+            const auto results = runStrategyComparison(
+                config, config.topologies, config.resource_levels,
+                config.n_sims, progress);
+            printStrategyTable(results, config.resource_levels);
+            exportStrategyComparison(results, config.resource_levels,
+                                     out_dir + "/strategy_comparison.csv");
+        } else if (scenario == "attack") {
+            const auto results = runAttackVectorAnalysis(
+                config, config.attack_strategies, config.topologies,
+                config.n_sims, progress);
+            exportAttackVectorAnalysis(results,
+                                       out_dir + "/attack_vector_analysis.csv");
+        } else if (scenario == "timeseries") {
+            const auto& topos = config.topologies.empty()
+                                    ? std::vector<std::string>{config.topology}
+                                    : config.topologies;
+            for (size_t i = 0; i < topos.size(); ++i) {
+                config.topology = topos[i];
+                const Graph graph = createNetworkTopology(config.topologyParams());
+                const SimResult result = runSimulation(graph, config);
+                if (!result.baseline_qos_ok) {
+                    std::cout << kYellow << "  Внимание: начальная сеть не "
+                              << "удовлетворяет требованиям класса QoS; "
+                              << "E_QoS_norm будет равен 0." << kReset << "\n";
                 }
+                exportTimeSeries(result,
+                                 out_dir + "/timeseries_" + topos[i] + ".csv");
+                exportRunMetadata(config, result,
+                                  out_dir + "/run_meta_" + topos[i] + ".csv");
+                progress((i + 1.0) / topos.size(), "timeseries " + topos[i]);
             }
-            std::cout << '\n';
+        } else if (scenario == "all") {
+            const std::vector<std::string> parts = {
+                "topology", "sweep", "strategy", "attack", "timeseries"};
+            for (size_t i = 0; i < parts.size(); ++i) {
+                std::cout << "\n>>> Сценарий: " << parts[i] << "\n";
+                if (runScenario(config, parts[i], out_dir, show_progress) != 0)
+                    return 1;
+                progress((i + 1.0) / parts.size(), "all: " + parts[i]);
+            }
+        } else {
+            std::cerr << "Неизвестный сценарий: " << scenario << "\n";
+            return 2;
         }
-        hr();
-        std::cout << "\n";
+    } catch (const std::exception& ex) {
+        std::cerr << "Ошибка выполнения: " << ex.what() << "\n";
+        return 1;
     }
-    exportParameterSweep(sweep_data, c.sweep_ranges, c.out_dir);
+
+    progress(1.0, "готово");
+    return 0;
 }
 
-static void runStrategy(Config c) {
-    fs::create_directories(c.out_dir);
-    c.heterogeneous = true;
-    TopoKwargs tk = cfgToTK(c);
-    auto res = runStrategyComparison(
-        c.topologies, c.num_nodes, tk, c.T,
-        c.attack_lambda, c.resource_levels,
-        c.attack_strategy, c.n_sims, c.repair_slots);
-    exportStrategyComparison(res, c.resource_levels,
-        c.out_dir + "/strategy_comparison.csv");
-    hr();
-    std::cout << ANSI_BOLD << "  FIFO vs Triage — результаты:\n" << ANSI_RESET;
+// ---------------------------------------------------------------------------
+// Самопроверка
+// ---------------------------------------------------------------------------
+int runSelfTest() {
+    std::cout << "NetSim self-test " << kVersion << "\n";
+    int failures = 0;
 
-    for (auto& [topo, gk_map] : res) {
-        std::cout << "\n   [" << topo << "]\n";
-        std::cout << "   " << std::left << std::setw(8) << "R"
-            << std::setw(12) << "LCC(F)" << std::setw(12) << "LCC(T)"
-            << std::setw(12) << "Enorm(F)" << std::setw(12) << "Enorm(T)"
-            << std::setw(12) << "φw(F)" << std::setw(12) << "φw(T)"
-            << std::setw(10) << "Знач." << '\n';
-        hr('-', 88);
+    auto check = [&](bool condition, const std::string& name) {
+        std::cout << (condition ? "  [OK]   " : "  [FAIL] ") << name << "\n";
+        if (!condition) ++failures;
+    };
 
-        for (double r : c.resource_levels) {
-            auto& fifo_pt = gk_map.at("fifo").at(r);
-            auto& triage_pt = gk_map.at("triage").at(r);
-            auto& sig = fifo_pt.sig;
+    // 1. Таблица Y.1541.
+    check(std::abs(qosRequirement(QosClass::Class0).iptd_s - 0.1) < 1e-12,
+          "Y.1541: класс 0, IPTD = 100 мс");
+    check(std::abs(qosRequirement(QosClass::Class4).iptd_s - 1.0) < 1e-12,
+          "Y.1541: класс 4, IPTD = 1 с");
+    check(std::abs(qosRequirement(QosClass::Class6).iplr - 1e-5) < 1e-15,
+          "Y.1541: класс 6, IPLR = 1e-5");
 
-            std::cout << std::fixed << std::setprecision(3);
-            std::cout << "   " << std::setw(8) << r
-                << std::setw(12) << fifo_pt.mc.lcc_mean
-                << std::setw(12) << triage_pt.mc.lcc_mean
-                << std::setw(12) << fifo_pt.mc.eff_mean
-                << std::setw(12) << triage_pt.mc.eff_mean
-                << std::setw(12) << fifo_pt.mc.wsurv_mean
-                << std::setw(12) << triage_pt.mc.wsurv_mean
-                << std::setw(10) << (sig.significant ? ANSI_GREEN : ANSI_DIM)
-                << sig.direction << ANSI_RESET << '\n';
+    // 2. M/M/1: при ρ = 0.5 задержка = base + 2/μ.
+    Edge edge;
+    edge.capacity = 1.0e9;
+    edge.base_latency = 0.001;
+    edge.load = 0.5e9;
+    QosParams qp;
+    qp.packet_bits = 12000.0;
+    const EdgeQos eq = evaluateEdgeQos(edge, qp);
+    const double mu = edge.capacity / qp.packet_bits;
+    check(std::abs(eq.delay_s - (edge.base_latency + 2.0 / mu)) < 1e-9,
+          "M/M/1: IPTD при ρ = 0.5");
+    check(eq.loss >= 0.0 && eq.loss < 1.0, "M/M/1: IPLR в допустимом диапазоне");
+
+    // 3. Топология и связность.
+    TopologyParams tp;
+    tp.topology = "barabasi_albert";
+    tp.num_nodes = 40;
+    tp.seed = 7;
+    const Graph graph = createNetworkTopology(tp);
+    check(graph.num_nodes == 40, "BA: число вершин");
+    check(graph.num_edges > 0, "BA: число дуг");
+    check(computeLccRatio(graph) > 0.999, "BA: граф связен");
+
+    // 4. Симуляция.
+    SimConfig cfg;
+    cfg.topology = "barabasi_albert";
+    cfg.num_nodes = 30;
+    cfg.n_sims = 1;
+    cfg.T = 30.0;
+    cfg.sample_points = 60;
+    cfg.attack_lambda = 0.8;
+    cfg.global_resources = 80.0;
+    cfg.repair_slots = 2;
+    cfg.seed = 11;
+    cfg.qos_class = 1;
+    const Graph sim_graph = createNetworkTopology(cfg.topologyParams());
+    const SimResult result = runSimulation(sim_graph, cfg);
+    check(result.metrics.size() == 60, "DES: число точек временного ряда");
+    check(result.e0_phys > 0.0, "DES: E0_phys > 0");
+    check(std::isfinite(result.metrics.back().e_qos_norm),
+          "DES: E_QoS_norm конечно");
+
+    // 5. Воспроизводимость.
+    const SimResult repeat = runSimulation(sim_graph, cfg);
+    check(std::abs(result.metrics.back().lcc -
+                   repeat.metrics.back().lcc) < 1e-12,
+          "DES: воспроизводимость при одинаковом seed");
+
+    std::cout << (failures == 0 ? kGreen : kRed)
+              << (failures == 0 ? "\nВсе проверки пройдены."
+                                : "\nПровалено проверок: " +
+                                      std::to_string(failures))
+              << kReset << "\n";
+    return failures == 0 ? 0 : 1;
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+void printUsage() {
+    std::cout
+        << "NetSim " << kVersion << " — симулятор живучести и QoS IP-сетей\n\n"
+        << "Использование:\n"
+        << "  netsim                          интерактивное меню\n"
+        << "  netsim run --config cfg.ini     пакетный запуск\n"
+        << "  netsim selftest                 самопроверка\n"
+        << "  netsim version                  версия\n\n"
+        << "Опции run:\n"
+        << "  --scenario topology|sweep|strategy|attack|timeseries|all\n"
+        << "  --config <path>                 загрузить INI\n"
+        << "  --out <dir>                     каталог результатов\n"
+        << "  --topology <name>               одна топология\n"
+        << "  --topologies a,b,c              список топологий\n"
+        << "  --num-nodes N --sims M --T X\n"
+        << "  --lambda L --resources R --slots S\n"
+        << "  --attack targeted|random|cascading\n"
+        << "  --gatekeeper fifo|triage\n"
+        << "  --qos-class 0..7 --demand BPS\n"
+        << "  --buffer K --access BPS --core BPS --hop-penalty S\n"
+        << "  --seed N --progress\n"
+        << "  --quick                         повтор последней конфигурации\n";
+}
+
+int runCli(int argc, char** argv) {
+    int index = 2;
+    SimConfig config;
+    config.ensureDefaultSweepRanges();
+
+    bool progress = false;
+    bool topologies_set = false;
+    bool topology_set = false;
+
+    if (argc > 2 && std::string(argv[2]) == "--quick") {
+        std::string error;
+        if (!config.loadFromFile("results/last_config.ini", error)) {
+            std::cerr << "Не удалось загрузить последнюю конфигурацию: "
+                      << error << "\n";
+            return 2;
+        }
+        index = 3;
+    }
+
+    for (int i = index; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--progress") {
+            progress = true;
+            continue;
+        }
+        if (arg == "--help" || arg == "-h") {
+            printUsage();
+            return 0;
+        }
+        if (arg.rfind("--", 0) != 0) {
+            std::cerr << "Неизвестный аргумент: " << arg << "\n";
+            return 2;
+        }
+
+        std::string key = arg.substr(2);
+        std::string value;
+        const size_t eq = key.find('=');
+        if (eq != std::string::npos) {
+            value = key.substr(eq + 1);
+            key = key.substr(0, eq);
+        } else {
+            if (i + 1 >= argc) {
+                std::cerr << "Для --" << key << " требуется значение\n";
+                return 2;
+            }
+            value = argv[++i];
+        }
+
+        std::replace(key.begin(), key.end(), '-', '_');
+        const std::string normalized = lower(key);
+
+        if (normalized == "config") {
+            std::string error;
+            if (!config.loadFromFile(value, error)) {
+                std::cerr << "Ошибка конфигурации: " << error << "\n";
+                return 2;
+            }
+            continue;
+        }
+        if (normalized == "progress") {
+            progress = true;
+            continue;
+        }
+
+        std::string option = normalized;
+        if (option == "sims" || option == "mc") option = "n_sims";
+        if (option == "horizon") option = "T";
+        if (option == "out") option = "out_dir";
+        if (option == "nodes") option = "num_nodes";
+        if (option == "slot" || option == "slots") option = "repair_slots";
+        if (option == "demand") option = "demand_per_pair";
+        if (option == "packet") option = "packet_bits";
+        if (option == "buffer") option = "buffer_packets";
+        if (option == "access") option = "access_capacity";
+        if (option == "core") option = "core_capacity";
+        if (option == "latency") option = "base_latency";
+        if (option == "qos") option = "qos_class";
+        if (option == "topo") option = "topology";
+
+        if (option == "topologies") topologies_set = true;
+        if (option == "topology") topology_set = true;
+
+        std::string error;
+        if (!config.applyOption(option, value, error)) {
+            std::cerr << "Ошибка: " << error << "\n";
+            return 2;
         }
     }
-    hr();
-}
 
-// ── ИСПРАВЛЕНО: добавлен вывод таблицы результатов ───────────────────────────
-static void runAttack(const Config& c) {
-    fs::create_directories(c.out_dir);
-    TopoKwargs tk = cfgToTK(c);
-    std::map<std::string, std::map<std::string, MCResult>> res_by_strategy;
+    if (topology_set && !topologies_set)
+        config.topologies = {config.topology};
 
-    for (const auto& atk : c.attack_strategies) {
-        std::cout << "\n  Стратегия атаки: " << ANSI_BOLD << atk << ANSI_RESET << '\n';
-        auto comp = runTopologyComparison(
-            c.topologies, c.num_nodes, tk, c.T,
-            c.attack_lambda, c.global_resources,
-            atk, c.gatekeeper, c.n_sims, c.repair_slots);
-
-        printTopoReport(comp);  // ← вывод таблицы
-
-        for (auto& [topo, mc] : comp.results)
-            res_by_strategy[atk][topo] = mc;
+    config.ensureDefaultSweepRanges();
+    std::string error;
+    if (!config.validate(error)) {
+        std::cerr << "Ошибка конфигурации: " << error << "\n";
+        return 2;
     }
-    exportAttackVectorAnalysis(res_by_strategy, c.out_dir + "/attack_vector_analysis.csv");
-}
 
-// ── ИСПРАВЛЕНО: добавлен вывод статистики временных рядов ────────────────────
-static void runTimeSeries(const Config& c) {
-    fs::create_directories(c.out_dir);
-    TopoKwargs tk = cfgToTK(c);
-    for (const auto& topo : c.topologies) {
-        Graph G = createNetworkTopology(
-            topo, c.num_nodes,
-            tk.base_P_attack, tk.base_P_recovery, tk.base_mu,
-            1, 1.0, tk.heterogeneous, {}, 42);
-        SimResult res = runDetailedSimulation(
-            G, c.T, c.attack_lambda, c.global_resources,
-            c.attack_strategy, c.gatekeeper,
-            c.repair_slots, c.sample_points, 42);
-
-        printTimeSeriesStats(topo, res);  // ← вывод статистики
-
-        exportTimeSeries(res, c.out_dir + "/timeseries_" + topo + ".csv");
+    if (!progress) {
+        std::cout << config.summary();
     }
+
+    const std::string out_dir =
+        config.out_dir.empty() ? "results" : config.out_dir;
+    const int code = runScenario(config, config.scenario, out_dir, progress);
+
+    // Сохраняем последнюю конфигурацию для --quick.
+    std::filesystem::create_directories("results");
+    config.out_dir = out_dir;
+    config.saveToFile("results/last_config.ini", error);
+
+    return code;
 }
 
-static void runAll(Config c) {
-    std::cout << "\n  ▶ TOPOLOGY\n";  runTopology(c);
-    std::cout << "\n  ▶ SWEEP\n";     runSweep(c);
-    std::cout << "\n  ▶ STRATEGY\n";  runStrategy(c);
-    std::cout << "\n  ▶ ATTACK\n";    runAttack(c);
-    std::cout << "\n  ▶ TIMESERIES\n"; runTimeSeries(c);
+// ---------------------------------------------------------------------------
+// Интерактивное меню
+// ---------------------------------------------------------------------------
+void configureAdvanced(SimConfig& cfg) {
+    std::cout << "\n" << kCyan << "  Расширенные параметры (Enter — по умолчанию)"
+              << kReset << "\n";
+    cfg.heterogeneous = askBool("Гетерогенная сеть (server/switch/host)",
+                                cfg.heterogeneous);
+    if (!cfg.heterogeneous) {
+        cfg.base_P_attack =
+            askDouble("P_attack (вероятность успеха атаки)", 0.01, 0.99,
+                      cfg.base_P_attack);
+        cfg.base_P_recovery =
+            askDouble("P_recovery (вероятность восстановления)", 0.01, 0.99,
+                      cfg.base_P_recovery);
+        cfg.base_mu = askDouble("μ (интенсивность восстановления)", 0.01, 1.0,
+                                cfg.base_mu);
+    }
+    cfg.access_capacity =
+        askDouble("Пропускная способность доступа, бит/с", 1e6, 1e12,
+                  cfg.access_capacity);
+    cfg.core_capacity =
+        askDouble("Пропускная способность ядра, бит/с", 1e6, 1e12,
+                  cfg.core_capacity);
+    cfg.base_latency = askDouble("Базовая задержка канала, с", 0.0001, 0.1,
+                                 cfg.base_latency);
+    cfg.demand_per_pair = askDouble("Трафик на пару, бит/с", 0.0, 1e9,
+                                    cfg.demand_per_pair);
+    cfg.packet_bits = askDouble("Размер пакета, бит", 8000.0, 16000.0,
+                                cfg.packet_bits);
+    cfg.buffer_packets =
+        askInt("Ёмкость буфера, пакетов", 1, 10000, cfg.buffer_packets);
+    cfg.er_p = askDouble("ER: вероятность ребра p", 0.0, 1.0, cfg.er_p);
+    cfg.ba_m = askInt("BA: связей на новый узел m", 1, cfg.num_nodes - 1,
+                      cfg.ba_m);
+    cfg.seed = static_cast<uint64_t>(
+        askInt("Seed генератора", 0, 1000000000, static_cast<int>(cfg.seed)));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Setup-функции
-// ─────────────────────────────────────────────────────────────────────────────
-static Config setupTopology() {
-    Config c;
-    setupCommon(c);
-    section("Параметры сценария");
-    c.topologies = askMultiChoice("Топологии для сравнения",
-        { "star", "ring", "full_mesh", "erdos_renyi", "barabasi_albert" }, c.topologies);
-    c.attack_strategy = askChoice("Стратегия атаки",
-        { "targeted", "random", "cascading" }, c.attack_strategy,
-        { {"targeted", "Атака на хаб"}, {"random", "Случайная"}, {"cascading", "Эпидемическая"} });
-    c.gatekeeper = askChoice("Политика Gatekeeper",
-        { "fifo", "triage" }, c.gatekeeper,
-        { {"fifo", "FIFO"}, {"triage", "Triage по критичности"} });
-    return c;
+int interactive() {
+    header("NetSim — модель живучести информационной инфраструктуры");
+    std::cout << "  " << kDim << "ВКР: Y.1541 + M/M/1 + дискретно-событийное ядро"
+              << kReset << "\n\n";
+
+    std::cout << "  1. topology    Сравнение топологий\n"
+              << "  2. sweep       Параметрический анализ\n"
+              << "  3. strategy    FIFO vs Triage\n"
+              << "  4. attack      Векторы атак\n"
+              << "  5. timeseries  Временные ряды\n"
+              << "  6. all         Все сценарии\n"
+              << "  7. selftest    Самопроверка\n"
+              << "  0. exit        Выход\n";
+
+    const std::string choice = askString("Выбор", "1");
+    if (choice == "0" || lower(choice) == "exit") return 0;
+    if (choice == "7" || lower(choice) == "selftest") return runSelfTest();
+
+    SimConfig cfg;
+    const std::map<std::string, std::string> scenarios = {
+        {"1", "topology"}, {"2", "sweep"},    {"3", "strategy"},
+        {"4", "attack"},   {"5", "timeseries"}, {"6", "all"},
+        {"topology", "topology"}, {"sweep", "sweep"},
+        {"strategy", "strategy"}, {"attack", "attack"},
+        {"timeseries", "timeseries"}, {"all", "all"}};
+
+    auto it = scenarios.find(lower(choice));
+    const std::string scenario = (it == scenarios.end()) ? "topology" : it->second;
+
+    header("Настройка: " + scenario);
+    cfg.num_nodes = askInt("Количество узлов N", 5, 500, cfg.num_nodes);
+    cfg.n_sims = askInt("Прогонов Монте-Карло", 1, 1000, cfg.n_sims);
+    cfg.T = askDouble("Горизонт моделирования T", 1.0, 5000.0, cfg.T);
+    cfg.attack_lambda =
+        askDouble("Интенсивность атак λ", 0.0, 50.0, cfg.attack_lambda);
+    cfg.global_resources =
+        askDouble("Глобальные ресурсы R", 0.0, 100000.0, cfg.global_resources);
+    cfg.repair_slots = askInt("Бригад восстановления", 0, 100, cfg.repair_slots);
+
+    if (scenario == "topology" || scenario == "sweep" || scenario == "attack" ||
+        scenario == "strategy" || scenario == "all" || scenario == "timeseries") {
+        cfg.topologies = askMultiChoice(
+            "Топологии (через запятую)", availableTopologies(),
+            scenario == "timeseries" ? std::vector<std::string>{cfg.topology}
+                                     : cfg.topologies);
+        cfg.topology = cfg.topologies.front();
+    }
+
+    if (scenario == "attack" || scenario == "all") {
+        cfg.attack_strategies = askMultiChoice(
+            "Векторы атак", {"targeted", "random", "cascading"},
+            cfg.attack_strategies);
+        cfg.attack_strategy = cfg.attack_strategies.front();
+    } else {
+        cfg.attack_strategy = askChoice(
+            "Стратегия атаки", {"targeted", "random", "cascading"},
+            cfg.attack_strategy);
+    }
+
+    cfg.gatekeeper =
+        askChoice("Политика восстановления", {"fifo", "triage"}, cfg.gatekeeper);
+
+    std::cout << "\n  " << kCyan << "Классы QoS Y.1541:" << kReset << "\n"
+              << qosTableText();
+    cfg.qos_class = askInt("Класс QoS (0..7)", 0, 7, cfg.qos_class);
+
+    if (scenario == "strategy") {
+        std::cout << "  Уровни ресурсов, например: 50 100 200 500\n";
+        const std::string raw = askString("Уровни R", "50 100 200 500");
+        std::istringstream stream(raw);
+        std::vector<double> levels;
+        double value = 0.0;
+        while (stream >> value) levels.push_back(value);
+        if (levels.size() >= 2) cfg.resource_levels = levels;
+    }
+
+    if (askBool("Настроить расширенные параметры", false))
+        configureAdvanced(cfg);
+
+    std::cout << "\n" << cfg.summary();
+    if (!askBool("Запустить", true)) return 0;
+
+    return runScenario(cfg, scenario, cfg.out_dir, true);
 }
 
-static Config setupSweep() {
-    Config c;
-    setupCommon(c);
-    section("Параметры сценария");
-    c.topologies = askMultiChoice("Топологии для sweep",
-        { "star", "ring", "full_mesh" }, c.topologies);
-    c.attack_strategy = askChoice("Стратегия атаки",
-        { "targeted", "random", "cascading" }, c.attack_strategy);
-    c.gatekeeper = askChoice("Gatekeeper", { "fifo", "triage" }, c.gatekeeper);
-    c.sweep_params = { "lambda", "resources", "mu", "P_attack" };
-    return c;
-}
+}  // namespace
 
-static Config setupStrategy() {
-    Config c;
-    setupCommon(c);
-    c.heterogeneous = true;
-    section("Параметры сценария");
-    c.topologies = askMultiChoice("Топологии",
-        { "star", "ring", "full_mesh" }, c.topologies);
-    c.attack_strategy = askChoice("Стратегия атаки",
-        { "targeted", "random", "cascading" }, c.attack_strategy);
-    c.resource_levels = askFloatList("Уровни ресурсов R через пробел",
-        0, 10000, c.resource_levels);
-    return c;
-}
-
-static Config setupAttack() {
-    Config c;
-    setupCommon(c);
-    section("Параметры сценария");
-    c.topologies = askMultiChoice("Топологии",
-        { "star", "ring", "full_mesh" }, c.topologies);
-    c.attack_strategies = askMultiChoice("Векторы атак",
-        { "targeted", "random", "cascading" }, c.attack_strategies);
-    c.gatekeeper = askChoice("Gatekeeper", { "fifo", "triage" }, c.gatekeeper);
-    return c;
-}
-
-static Config setupTimeSeries() {
-    Config c;
-    setupCommon(c);
-    section("Параметры сценария");
-    c.topologies = askMultiChoice("Топологии",
-        { "star", "ring", "full_mesh" }, { "star" });
-    c.attack_strategy = askChoice("Стратегия атаки",
-        { "targeted", "random", "cascading" }, c.attack_strategy);
-    c.gatekeeper = askChoice("Gatekeeper", { "fifo", "triage" }, c.gatekeeper);
-    c.sample_points = askInt("Точек временного ряда", 50, 2000, c.sample_points);
-    return c;
-}
-
-static Config setupAll() {
-    Config c;
-    setupCommon(c);
-    c.topologies = { "star", "ring", "full_mesh" };
-    c.attack_strategies = { "targeted", "random", "cascading" };
-    return c;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Главное меню
-// ─────────────────────────────────────────────────────────────────────────────
-struct ScenarioInfo {
-    std::string key;
-    std::string desc;
-};
-
-static const std::vector<ScenarioInfo> SCENARIOS = {
-    {"topology",    "Сравнение топологий по всем метрикам"},
-    {"sweep",       "Однофакторный параметрический анализ"},
-    {"strategy",    "FIFO vs Triage при разных уровнях ресурсов"},
-    {"attack",      "Сравнение векторов атак: targeted/random/cascading"},
-    {"timeseries",  "Временные ряды одной симуляции (отладка)"},
-    {"all",         "Все сценарии последовательно"},
-};
-
-int main(int argc, char* argv[]) {
+int main(int argc, char** argv) {
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 #endif
 
-    bool quick = (argc > 1 && std::string(argv[1]) == "--quick");
+    try {
+        if (argc <= 1) return interactive();
 
-    header("Модель устойчивости информационной инфраструктуры");
-    std::cout << '\n';
-
-    if (!quick) {
-        for (int i = 0; i < (int)SCENARIOS.size(); ++i)
-            std::cout << "     " << ANSI_BOLD << (i + 1) << ANSI_RESET << ".   "
-            << std::left << std::setw(14) << SCENARIOS[i].key
-            << SCENARIOS[i].desc << '\n';
-        std::cout << '\n';
-        hint("Введите номер (1–6) или название. Enter = 1 (topology).");
-        std::cout << '\n' << "   > ";
-
-        std::string raw; std::getline(std::cin, raw);
-        std::string scenario = "topology";
-        if (!raw.empty()) {
-            bool found = false;
-            for (auto& s : SCENARIOS) if (raw == s.key) { scenario = s.key; found = true; break; }
-            if (!found) {
-                try {
-                    int idx = std::stoi(raw) - 1;
-                    if (idx >= 0 && idx < (int)SCENARIOS.size())
-                        scenario = SCENARIOS[idx].key;
-                }
-                catch (...) {}
-            }
+        const std::string command = lower(argv[1]);
+        if (command == "version" || command == "--version" || command == "-v") {
+            std::cout << "NetSim " << kVersion << "\n";
+            return 0;
         }
-
-        header("Настройка: " + scenario);
-        Config cfg;
-        if (scenario == "topology")   cfg = setupTopology();
-        else if (scenario == "sweep")      cfg = setupSweep();
-        else if (scenario == "strategy")   cfg = setupStrategy();
-        else if (scenario == "attack")     cfg = setupAttack();
-        else if (scenario == "timeseries") cfg = setupTimeSeries();
-        else                               cfg = setupAll();
-
-        fs::create_directories(cfg.out_dir);
-        printSummary(scenario, cfg);
-        hr('=');
-        std::cout << "  ЗАПУСК: " << ANSI_BOLD << scenario << ANSI_RESET << '\n';
-        hr('=');
-
-        if (scenario == "topology")   runTopology(cfg);
-        else if (scenario == "sweep")      runSweep(cfg);
-        else if (scenario == "strategy")   runStrategy(cfg);
-        else if (scenario == "attack")     runAttack(cfg);
-        else if (scenario == "timeseries") runTimeSeries(cfg);
-        else                               runAll(cfg);
-
-        hr('=');
-        std::cout << "  " << ANSI_GREEN << "✓ Готово." << ANSI_RESET
-            << "  CSV-файлы: " << cfg.out_dir
-            << "\n  Для построения графиков: python plot_results.py " << cfg.out_dir << '\n';
-        hr('=');
-
-        std::cout << "\n  ⏳ Генерация графиков (вызов Python)...\n";
-        std::string plot_cmd = "python plot_results.py " + cfg.out_dir;
-        int ret = std::system(plot_cmd.c_str());
-        if (ret == 0) {
-            std::cout << ANSI_GREEN << "  ✓ Графики успешно построены!\n" << ANSI_RESET;
+        if (command == "help" || command == "--help" || command == "-h") {
+            printUsage();
+            return 0;
         }
-        else {
-            std::cout << ANSI_RED << "  ✗ Не удалось построить графики.\n" << ANSI_RESET;
-        }
-        hr('=');
-    }
-    else {
-        std::cout << ANSI_RED << "  --quick: нет сохранённых настроек. Запустите без флага.\n" << ANSI_RESET;
+        if (command == "selftest" || command == "--selftest") return runSelfTest();
+        if (command == "run" || command.rfind("--", 0) == 0)
+            return runCli(argc, argv);
+        if (command == "interactive") return interactive();
+
+        std::cerr << "Неизвестная команда: " << argv[1] << "\n";
+        printUsage();
+        return 2;
+    } catch (const std::exception& ex) {
+        std::cerr << "Критическая ошибка: " << ex.what() << "\n";
         return 1;
     }
-    return 0;
 }

@@ -1,136 +1,128 @@
 #pragma once
-#include "topology.h"
-#include <vector>
-#include <string>
-#include <unordered_map>
-#include <map>
+// ---------------------------------------------------------------------------
+// experiments.h — постановка численных экспериментов и статистическая
+// обработка результатов Монте-Карло.
+// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Статистика одного прогона MC
-// ---------------------------------------------------------------------------
-struct MCResult {
-    double lcc_mean,    lcc_std,    lcc_ci,    lcc_se;
-    double eff_mean,    eff_std,    eff_ci,    eff_se;
-    double wsurv_mean,  wsurv_std,  wsurv_ci,  wsurv_se;
-    double ffail_mean,  ffail_std,  ffail_ci,  ffail_se;
-    double res_mean,    res_std,    res_ci,    res_se;
-    double exhaustion_rate;
-    std::vector<double> lcc_samples;
-    std::vector<double> wsurv_samples;
+#include "config.h"
+#include "engine.h"
+
+#include <functional>
+#include <map>
+#include <string>
+#include <vector>
+
+namespace netsim {
+
+using ProgressFn = std::function<void(double fraction, const std::string& stage)>;
+
+struct Stat {
+    double mean = 0.0;
+    double std = 0.0;
+    double ci = 0.0;
+    double se = 0.0;
 };
 
-// ---------------------------------------------------------------------------
-// Результат попарного теста значимости
-// ---------------------------------------------------------------------------
+struct MCResult {
+    int n_sims = 0;
+
+    Stat lcc;
+    Stat phi_w;
+    Stat e_phys;
+    Stat e_qos;
+    Stat qos_ratio;
+    Stat iptd_ms;
+    Stat iplr;
+    Stat ipdv_ms;
+    Stat queue_depth;
+    Stat first_failure;
+    Stat resources;
+
+    double exhaustion_rate = 0.0;
+    double baseline_qos_rate = 0.0;  // доля прогонов с E0_QoS > 0
+
+    std::vector<double> lcc_samples;
+    std::vector<double> eqos_samples;
+    std::vector<double> qos_samples;
+    std::vector<double> phi_samples;
+};
+
 struct SigResult {
-    double      U;
-    double      p_raw;
-    double      p_holm;
-    bool        significant;
+    double U = 0.0;
+    double p_raw = 1.0;
+    double p_holm = 1.0;
+    bool significant = false;
     std::string direction;
 };
 
-// Тип: {(a,b) -> SigResult}
-using SigMap = std::map<std::pair<std::string,std::string>, SigResult>;
+using SigMap = std::map<std::pair<std::string, std::string>, SigResult>;
 
-// ---------------------------------------------------------------------------
-// Параметры топологии для передачи в MC
-// ---------------------------------------------------------------------------
-struct TopoKwargs {
-    double base_P_attack   = 0.60;
-    double base_P_recovery = 0.80;
-    double base_mu         = 0.20;
-    int    base_C_repair   = 1;
-    double base_weight     = 1.0;
-    bool   heterogeneous   = false;
-};
-
-// ---------------------------------------------------------------------------
-// API
-// ---------------------------------------------------------------------------
-std::pair<double,double> confidenceInterval(
-    const std::vector<double>& samples, double alpha = 0.05);
-
-SigMap pairwiseSignificance(
-    const std::map<std::string, std::vector<double>>& raw_samples,
-    double alpha = 0.05);
-
-MCResult runMonteCarlo(
-    const std::string& topology,
-    int                num_nodes,
-    const TopoKwargs&  tk,
-    double             T,
-    double             attack_lambda,
-    double             global_resources,
-    const std::string& attack_strategy = "targeted",
-    const std::string& gatekeeper      = "fifo",
-    int                n_sims          = 30,
-    int                repair_slots    = 1,
-    double             ci_alpha        = 0.05
-);
-
-// Сравнение топологий
 struct TopoCompResult {
     std::map<std::string, MCResult> results;
-    SigMap                          significance;
+    SigMap significance_qos;
+    SigMap significance_lcc;
 };
-TopoCompResult runTopologyComparison(
-    const std::vector<std::string>& topologies,
-    int                             num_nodes,
-    const TopoKwargs&               tk,
-    double                          T,
-    double                          attack_lambda,
-    double                          global_resources,
-    const std::string&              attack_strategy = "targeted",
-    const std::string&              gatekeeper      = "fifo",
-    int                             n_sims          = 30,
-    int                             repair_slots    = 1
-);
 
-// Параметрический sweep
 struct SweepResult {
-    std::vector<double> lcc_means;
-    std::vector<double> lcc_ci;
-    std::vector<double> eff_means;
-    std::vector<double> eff_ci;
-    std::vector<double> wsurv_means;
-    std::vector<double> wsurv_ci;
+    std::vector<double> lcc_means, lcc_ci;
+    std::vector<double> phi_means, phi_ci;
+    std::vector<double> e_phys_means, e_phys_ci;
+    std::vector<double> e_qos_means, e_qos_ci;
+    std::vector<double> qos_means, qos_ci;
+    std::vector<double> iptd_means, iptd_ci;
+    std::vector<double> iplr_means, iplr_ci;
 };
-SweepResult runParameterSweep(
-    const std::string&         param_name,
-    const std::vector<double>& param_values,
-    const std::map<std::string,double>& fixed_params,
-    const std::string&         topology,
-    int                        num_nodes,
-    const std::string&         attack_strategy = "targeted",
-    const std::string&         gatekeeper      = "fifo",
-    int                        n_sims          = 20,
-    double                     T               = 150.0,
-    int                        repair_slots    = 1
-);
 
-// FIFO vs Triage
 struct StrategyPoint {
     MCResult mc;
-    struct Sig {
-        double U, p;
-        bool   significant;
-        std::string direction;
-    } sig;
+    SigResult sig;      // сравнение по E_QoS
+    SigResult sig_phi;  // сравнение по φ_w
 };
-// {topo -> {gatekeeper -> {R -> StrategyPoint}}}
+
 using StrategyResults = std::map<std::string,
     std::map<std::string,
         std::map<double, StrategyPoint>>>;
 
+// Статистические функции.
+std::pair<double, double> confidenceInterval(const std::vector<double>& samples,
+                                             double alpha = 0.05);
+SigMap pairwiseSignificance(
+    const std::map<std::string, std::vector<double>>& raw_samples,
+    double alpha = 0.05);
+
+// Один сценарий Монте-Карло.
+MCResult runMonteCarlo(const SimConfig& base,
+                       int n_sims,
+                       const ProgressFn& progress = {});
+
+// Сравнение топологий по всем метрикам.
+TopoCompResult runTopologyComparison(const SimConfig& base,
+                                     const std::vector<std::string>& topologies,
+                                     int n_sims,
+                                     const ProgressFn& progress = {});
+
+// Однофакторный параметрический анализ для одной топологии.
+SweepResult runParameterSweep(const SimConfig& base,
+                              const std::string& param_name,
+                              const std::vector<double>& param_values,
+                              const std::string& topology,
+                              int n_sims,
+                              const ProgressFn& progress = {});
+
+// Сравнение FIFO и Triage при заданных уровнях ресурсов.
 StrategyResults runStrategyComparison(
+    const SimConfig& base,
     const std::vector<std::string>& topologies,
-    int                             num_nodes,
-    const TopoKwargs&               tk,
-    double                          T,
-    double                          attack_lambda,
-    const std::vector<double>&      resource_levels,
-    const std::string&              attack_strategy = "targeted",
-    int                             n_sims          = 30,
-    int                             repair_slots    = 1
-);
+    const std::vector<double>& resource_levels,
+    int n_sims,
+    const ProgressFn& progress = {});
+
+// Сравнение векторов атак.
+std::map<std::string, std::map<std::string, MCResult>>
+runAttackVectorAnalysis(const SimConfig& base,
+                        const std::vector<std::string>& strategies,
+                        const std::vector<std::string>& topologies,
+                        int n_sims,
+                        const ProgressFn& progress = {});
+
+}  // namespace netsim

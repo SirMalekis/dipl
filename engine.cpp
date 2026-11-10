@@ -1,229 +1,313 @@
 #include "engine.h"
-#include "metrics.h"
+
+#include "qos.h"
+#include "traffic.h"
+
 #include <algorithm>
-#include <stdexcept>
 #include <cmath>
-#include <numeric>
+#include <functional>
 #include <limits>
+#include <queue>
+#include <random>
+#include <stdexcept>
 
-// ---------------------------------------------------------------------------
-// Выбор цели атаки
-// ---------------------------------------------------------------------------
-static int selectAttackTarget(const Graph& G,
-                               const std::vector<int>& active_nodes,
-                               const std::string& strategy,
-                               std::mt19937_64& rng) {
-    if (active_nodes.empty()) return -1;
+namespace netsim {
 
-    if (strategy == "targeted") {
-        int best = -1, best_deg = -1;
-        for (int n : active_nodes) {
-            int d = G.degree(n);
-            if (d > best_deg) { best_deg = d; best = n; }
+namespace {
+
+constexpr double kEps = 1.0e-12;
+
+enum class EventType {
+    Attack,
+    RepairComplete
+};
+
+struct Event {
+    double    time = 0.0;
+    EventType type = EventType::Attack;
+    int       node = -1;
+    uint64_t  seq = 0;
+};
+
+struct EventCompare {
+    bool operator()(const Event& a, const Event& b) const {
+        if (a.time != b.time) return a.time > b.time;
+        return a.seq > b.seq;
+    }
+};
+
+}  // namespace
+
+SimResult runSimulation(const Graph& graph, const SimConfig& config) {
+    if (config.sample_points < 2)
+        throw std::invalid_argument("sample_points должно быть ≥ 2");
+
+    Graph g = graph;
+    g.rebuildEdgeIndex();
+
+    const QosParams qos = config.qosParams();
+    const TrafficParams traffic = config.trafficParams();
+    const int n = g.num_nodes;
+
+    std::mt19937_64 rng(config.seed == 0 ? std::random_device{}() : config.seed);
+    std::uniform_real_distribution<double> u01(0.0, 1.0);
+    std::exponential_distribution<double> exp_unit(1.0);
+
+    auto sampleExp = [&](double rate) -> double {
+        if (rate <= 0.0) return std::numeric_limits<double>::infinity();
+        return exp_unit(rng) / rate;
+    };
+
+    // -----------------------------------------------------------------
+    // Калибровка: эталонная эффективность полностью исправной сети.
+    // -----------------------------------------------------------------
+    MetricsContext context;
+    context.qos = qos;
+
+    TrafficAssignment initial = assignTraffic(g, traffic, qos);
+    context.calibrate(initial.routing);
+
+    RoutingMatrix current_routing = initial.routing;
+    NetworkMetrics current_metrics =
+        computeMetrics(g, current_routing, context, 0.0);
+    bool dirty = false;
+
+    SimResult result;
+    result.num_nodes = n;
+    result.e0_phys = context.e0_phys;
+    result.e0_qos = context.e0_qos;
+    result.baseline_qos_ok = context.baseline_qos_ok;
+    result.first_failure_time = config.T;
+
+    // -----------------------------------------------------------------
+    // Состояние восстановления
+    // -----------------------------------------------------------------
+    std::vector<char> in_repair(n, 0);
+    std::vector<int>  waiting;
+    std::vector<double> failure_time(n, 0.0);
+    double resources = config.global_resources;
+    int used_slots = 0;
+    bool resource_exhausted = false;
+
+    std::priority_queue<Event, std::vector<Event>, EventCompare> events;
+    uint64_t next_seq = 0;
+
+    auto schedule = [&](double time, EventType type, int node) {
+        if (!std::isfinite(time)) return;
+        events.push(Event{time, type, node, next_seq++});
+    };
+
+    // Выбор узла из очереди ожидания.
+    auto selectWaiting = [&]() -> int {
+        int best = -1;
+        for (int node : waiting) {
+            if (in_repair[node]) continue;
+            if (best < 0) {
+                best = node;
+                continue;
+            }
+            if (config.gatekeeper == "triage") {
+                const Node& candidate = g.nodes[node];
+                const Node& current = g.nodes[best];
+                if (candidate.weight > current.weight) {
+                    best = node;
+                } else if (candidate.weight == current.weight &&
+                           failure_time[node] < failure_time[best]) {
+                    best = node;
+                }
+            } else {
+                if (failure_time[node] < failure_time[best] ||
+                    (failure_time[node] == failure_time[best] && node < best)) {
+                    best = node;
+                }
+            }
         }
-        // Если несколько с максимальной степенью — случайный выбор среди них
-        std::vector<int> candidates;
-        for (int n : active_nodes)
-            if (G.degree(n) == best_deg) candidates.push_back(n);
-        std::uniform_int_distribution<int> uid(0, (int)candidates.size()-1);
-        return candidates[uid(rng)];
-    }
-    else if (strategy == "random") {
-        std::uniform_int_distribution<int> uid(0, (int)active_nodes.size()-1);
-        return active_nodes[uid(rng)];
-    }
-    else if (strategy == "cascading") {
-        // Соседи уже отказавших узлов
-        std::vector<bool> exposed_set(G.num_nodes, false);
-        std::vector<int>  exposed;
-        for (int n = 0; n < G.num_nodes; ++n) {
-            if (G.nodes[n].state == 0) {
-                for (const Edge& edge : G.adj[n]) {
-                    int nb = edge.target;
-                    if (G.nodes[nb].state == 1 && !exposed_set[nb]) {
-                        exposed_set[nb] = true;
+        return best;
+    };
+
+    std::function<void(double)> dispatch = [&](double now) {
+        if (config.repair_slots <= 0) return;
+        while (used_slots < config.repair_slots) {
+            const int node = selectWaiting();
+            if (node < 0) break;
+
+            Node& nd = g.nodes[node];
+            const double cost = static_cast<double>(nd.C_repair);
+            if (resources + kEps < cost) {
+                resource_exhausted = true;
+                break;
+            }
+
+            waiting.erase(std::find(waiting.begin(), waiting.end(), node));
+            resources -= cost;
+            result.resources_consumed += cost;
+            ++used_slots;
+            in_repair[node] = 1;
+
+            double duration = sampleExp(nd.mu);
+            if (!std::isfinite(duration)) duration = config.T;
+            duration = std::max(duration, 1.0e-9);
+            schedule(now + duration, EventType::RepairComplete, node);
+        }
+    };
+
+    auto selectAttackTarget = [&](const std::vector<int>& active) -> int {
+        if (active.empty()) return -1;
+
+        if (config.attack_strategy == "random") {
+            std::uniform_int_distribution<size_t> pick(0, active.size() - 1);
+            return active[pick(rng)];
+        }
+
+        if (config.attack_strategy == "cascading") {
+            std::vector<char> exposed_flag(n, 0);
+            std::vector<int> exposed;
+            for (int node = 0; node < n; ++node) {
+                if (g.nodes[node].state != 0) continue;
+                for (const Edge& edge : g.adj[node]) {
+                    const int nb = edge.target;
+                    if (g.nodes[nb].state == 1 && !exposed_flag[nb]) {
+                        exposed_flag[nb] = 1;
                         exposed.push_back(nb);
                     }
                 }
             }
+            const std::vector<int>& pool = exposed.empty() ? active : exposed;
+            std::uniform_int_distribution<size_t> pick(0, pool.size() - 1);
+            return pool[pick(rng)];
         }
-        const auto& pool = exposed.empty() ? active_nodes : exposed;
-        std::uniform_int_distribution<int> uid(0, (int)pool.size()-1);
-        return pool[uid(rng)];
-    }
-    else {
-        throw std::invalid_argument(
-            "Неизвестная стратегия: '" + strategy +
-            "'. Допустимые: targeted, random, cascading.");
-    }
-}
 
-// ---------------------------------------------------------------------------
-// Построение очереди восстановления
-// ---------------------------------------------------------------------------
-static std::vector<int> buildRepairQueue(Graph& G,
-                                          const std::string& gatekeeper,
-                                          double t) {
-    std::vector<int> ready;
-    for (int i = 0; i < G.num_nodes; ++i) {
-        const Node& nd = G.nodes[i];
-        if (nd.state == 0
-            && nd.recovery_end_time != -1.0
-            && nd.recovery_end_time != std::numeric_limits<double>::infinity()
-            && nd.recovery_end_time <= t)
-        {
-            ready.push_back(i);
-        }
-    }
-    if (ready.empty()) return ready;
-
-    if (gatekeeper == "fifo") {
-        std::sort(ready.begin(), ready.end(), [&](int a, int b){
-            return G.nodes[a].recovery_end_time < G.nodes[b].recovery_end_time;
-        });
-    } else if (gatekeeper == "triage") {
-        std::sort(ready.begin(), ready.end(), [&](int a, int b){
-            return G.nodes[a].weight > G.nodes[b].weight;
-        });
-    }
-    return ready;
-}
-
-// ---------------------------------------------------------------------------
-// Основной движок
-// ---------------------------------------------------------------------------
-SimResult runDetailedSimulation(
-    const Graph&       G_orig,
-    double             T,
-    double             attack_lambda,
-    double             total_global_resources,
-    const std::string& attack_strategy,
-    const std::string& gatekeeper,
-    int                repair_slots,
-    int                sample_points,
-    uint64_t           rng_seed)
-{
-    Graph G = G_orig;  // рабочая копия
-    std::mt19937_64 rng(rng_seed == 0 ? std::random_device{}() : rng_seed);
-    std::uniform_real_distribution<double> u01(0.0, 1.0);
-    std::exponential_distribution<double>  expDist(1.0);  // λ=1, масштабируем вручную
-
-    auto expSample = [&](double rate) -> double {
-        if (rate <= 0) return std::numeric_limits<double>::infinity();
-        return expDist(rng) / rate;
+        // targeted: узел с максимальной степенью, ties — случайно.
+        int best_degree = -1;
+        for (int node : active) best_degree = std::max(best_degree, g.degree(node));
+        std::vector<int> candidates;
+        for (int node : active)
+            if (g.degree(node) == best_degree) candidates.push_back(node);
+        std::uniform_int_distribution<size_t> pick(0, candidates.size() - 1);
+        return candidates[pick(rng)];
     };
 
-    int    N               = G.num_nodes;
-    double E0              = computeInitialEfficiency(G);
-    double current_res     = total_global_resources;
-    bool   repair_forbidden = (total_global_resources == 0.0);
-
-    SimResult stats;
-    stats.first_failure_time        = T;
-    stats.resources_consumed        = 0.0;
-    stats.global_resource_exhausted = false;
-    stats.recoveries_success        = 0;
-    stats.recoveries_failed         = 0;
-
-    // Генерация потока атак (Пуассон)
-    std::vector<double> attack_times;
-    if (attack_lambda > 0.0) {
-        double t_curr = expSample(attack_lambda);
-        while (t_curr <= T) {
-            attack_times.push_back(t_curr);
-            t_curr += expSample(attack_lambda);
+    auto registerFailure = [&](int node, double now) {
+        g.nodes[node].state = 0;
+        failure_time[node] = now;
+        waiting.push_back(node);
+        result.max_queue_depth =
+            std::max(result.max_queue_depth, static_cast<int>(waiting.size()));
+        if (!result.had_failure) {
+            result.had_failure = true;
+            result.first_failure_time = now;
         }
-    }
-    int attack_idx   = 0;
-    bool failure_seen = false;
+        dirty = true;
+    };
 
-    // Временная ось
-    double dt = T / (sample_points - 1);
-    stats.time_points.resize(sample_points);
-    for (int i = 0; i < sample_points; ++i)
-        stats.time_points[i] = i * dt;
-    // Точная последняя точка
-    if (sample_points > 0) stats.time_points.back() = T;
+    auto processEvent = [&](const Event& event) {
+        const double now = event.time;
 
-    stats.lcc_history.reserve(sample_points);
-    stats.eff_norm_history.reserve(sample_points);
-    stats.weighted_surv_history.reserve(sample_points);
-    stats.queue_depth_history.reserve(sample_points);
-    stats.slots_used_history.reserve(sample_points);
+        if (event.type == EventType::Attack) {
+            ++result.attacks;
 
-    for (int step = 0; step < sample_points; ++step) {
-        double t = stats.time_points[step];
-
-        // ── A: Атаки ─────────────────────────────────────────────────
-        while (attack_idx < (int)attack_times.size() && attack_times[attack_idx] <= t) {
-            double t_atk = attack_times[attack_idx];
             std::vector<int> active;
-            active.reserve(N);
-            for (int i = 0; i < N; ++i)
-                if (G.nodes[i].state == 1) active.push_back(i);
+            active.reserve(n);
+            for (int i = 0; i < n; ++i)
+                if (g.nodes[i].state == 1) active.push_back(i);
 
-            if (!active.empty()) {
-                int target = selectAttackTarget(G, active, attack_strategy, rng);
-                if (target >= 0) {
-                    if (u01(rng) < G.nodes[target].P_attack) {
-                        G.nodes[target].state = 0;
-                        if (!failure_seen) {
-                            stats.first_failure_time = t_atk;
-                            failure_seen = true;
-                        }
-                        double mu = std::max(G.nodes[target].mu, 1e-9);
-                        G.nodes[target].recovery_end_time = t_atk + expSample(mu);
-                    }
-                }
+            const int target = selectAttackTarget(active);
+            if (target >= 0 && u01(rng) < g.nodes[target].P_attack) {
+                ++result.attacks_successful;
+                registerFailure(target, now);
+                dispatch(now);
             }
-            ++attack_idx;
+
+            if (config.attack_lambda > 0.0) {
+                const double next = now + sampleExp(config.attack_lambda);
+                schedule(next, EventType::Attack, -1);
+            }
+            return;
         }
 
-        // ── B: Восстановление ────────────────────────────────────────
-        int slots_used = 0;
-        if (!repair_forbidden) {
-            auto queue = buildRepairQueue(G, gatekeeper, t);
-            stats.queue_depth_history.push_back((int)queue.size());
+        // Завершение ремонта.
+        const int node = event.node;
+        if (node < 0 || node >= n) return;
+        --used_slots;
+        in_repair[node] = 0;
 
-            for (int node : queue) {
-                if (slots_used >= repair_slots) break;
-
-                Node& nd = G.nodes[node];
-                int cost = nd.C_repair;
-
-                if (current_res >= cost) {
-                    current_res              -= cost;
-                    stats.resources_consumed += cost;
-                    ++slots_used;
-
-                    if (u01(rng) < nd.P_recovery) {
-                        nd.state              = 1;
-                        nd.recovery_end_time  = -1.0;
-                        ++stats.recoveries_success;
-                    } else {
-                        ++stats.recoveries_failed;
-                        double mu = std::max(nd.mu, 1e-9);
-                        nd.recovery_end_time = t + expSample(mu);
-                    }
-                } else {
-                    stats.global_resource_exhausted = true;
-                    // Временный дефицит — ждём следующего шага
-                }
-            }
+        Node& nd = g.nodes[node];
+        if (u01(rng) < nd.P_recovery) {
+            nd.state = 1;
+            ++result.recoveries_success;
         } else {
-            stats.queue_depth_history.push_back(0);
+            ++result.recoveries_failed;
+            waiting.push_back(node);
+            failure_time[node] = now;
+            result.max_queue_depth =
+                std::max(result.max_queue_depth, static_cast<int>(waiting.size()));
         }
-        stats.slots_used_history.push_back(slots_used);
+        dirty = true;
+        dispatch(now);
+    };
 
-        // ── C: Метрики ───────────────────────────────────────────────
-        // Имитируем передачу 500 Кбит/с между каждой парой узлов (all-to-all)
-        // Для N=50 это может создать пиковую нагрузку до 1.2 Гбит/с на центральных каналах
-        recalculateTraffic(G, 500000.0);
-
-        stats.lcc_history.push_back(computeLccRatio(G, N));
-        stats.eff_norm_history.push_back(computeNormalizedEfficiency(G, E0));
-        stats.weighted_surv_history.push_back(computeWeightedSurvivability(G));
+    // -----------------------------------------------------------------
+    // Планирование первой атаки и временная сетка
+    // -----------------------------------------------------------------
+    if (config.attack_lambda > 0.0) {
+        const double first = sampleExp(config.attack_lambda);
+        schedule(first, EventType::Attack, -1);
     }
 
-    return stats;
+    std::vector<double> times(config.sample_points);
+    for (int i = 0; i < config.sample_points; ++i)
+        times[i] = config.T * static_cast<double>(i) /
+                   static_cast<double>(config.sample_points - 1);
+    times.back() = config.T;
+
+    result.time_points = times;
+    result.metrics.reserve(config.sample_points);
+
+    double last_integral_time = 0.0;
+    double queue_area = 0.0;
+    double slots_area = 0.0;
+
+    for (int step = 0; step < config.sample_points; ++step) {
+        const double now = times[step];
+
+        while (!events.empty() && events.top().time <= now + kEps) {
+            const Event event = events.top();
+            events.pop();
+
+            queue_area += static_cast<double>(waiting.size()) *
+                          (event.time - last_integral_time);
+            slots_area += static_cast<double>(used_slots) *
+                          (event.time - last_integral_time);
+            last_integral_time = event.time;
+
+            processEvent(event);
+        }
+
+        if (dirty) {
+            TrafficAssignment assignment = assignTraffic(g, traffic, qos);
+            current_routing = std::move(assignment.routing);
+            current_metrics = computeMetrics(g, current_routing, context, now);
+            dirty = false;
+        } else {
+            current_metrics.time = now;
+        }
+
+        result.metrics.push_back(current_metrics);
+    }
+
+    // Точные интегралы по времени для средних значений очереди и занятых бригад.
+    queue_area += static_cast<double>(waiting.size()) *
+                  (config.T - last_integral_time);
+    slots_area += static_cast<double>(used_slots) *
+                  (config.T - last_integral_time);
+
+    if (config.T > 0.0) {
+        result.mean_queue_depth = queue_area / config.T;
+        result.mean_slots_used = slots_area / config.T;
+    }
+    result.global_resource_exhausted = resource_exhausted;
+
+    return result;
 }
+
+}  // namespace netsim

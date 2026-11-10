@@ -1,0 +1,21 @@
+metric,topology_a,topology_b,U,p_raw,p_holm,significant,direction
+e_qos_norm,barabasi_albert,erdos_renyi,14.000000,0.000000,0.000001,1,erdos_renyi > barabasi_albert
+e_qos_norm,barabasi_albert,full_mesh,0.000000,0.000000,0.000001,1,full_mesh > barabasi_albert
+e_qos_norm,barabasi_albert,ring,0.000000,0.000000,0.000001,1,ring > barabasi_albert
+e_qos_norm,barabasi_albert,star,122.000000,0.034866,0.034866,1,star > barabasi_albert
+e_qos_norm,erdos_renyi,full_mesh,0.000000,0.000000,0.000001,1,full_mesh > erdos_renyi
+e_qos_norm,erdos_renyi,ring,0.000000,0.000000,0.000001,1,ring > erdos_renyi
+e_qos_norm,erdos_renyi,star,47.000000,0.000035,0.000070,1,erdos_renyi > star
+e_qos_norm,full_mesh,ring,4.000000,0.000000,0.000001,1,ring > full_mesh
+e_qos_norm,full_mesh,star,0.000000,0.000000,0.000001,1,full_mesh > star
+e_qos_norm,ring,star,0.000000,0.000000,0.000001,1,ring > star
+lcc,barabasi_albert,erdos_renyi,4.000000,0.000000,0.000001,1,erdos_renyi > barabasi_albert
+lcc,barabasi_albert,full_mesh,0.000000,0.000000,0.000001,1,full_mesh > barabasi_albert
+lcc,barabasi_albert,ring,98.000000,0.005796,0.010667,1,ring > barabasi_albert
+lcc,barabasi_albert,star,58.000000,0.000122,0.000367,1,barabasi_albert > star
+lcc,erdos_renyi,full_mesh,97.000000,0.005334,0.010667,1,full_mesh > erdos_renyi
+lcc,erdos_renyi,ring,10.000000,0.000000,0.000001,1,erdos_renyi > ring
+lcc,erdos_renyi,star,0.000000,0.000000,0.000001,1,erdos_renyi > star
+lcc,full_mesh,ring,2.000000,0.000000,0.000001,1,full_mesh > ring
+lcc,full_mesh,star,0.000000,0.000000,0.000001,1,full_mesh > star
+lcc,ring,star,14.000000,0.000000,0.000002,1,ring > star

@@ -139,19 +139,25 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="config.cpp" />
     <ClCompile Include="csv_export.cpp" />
     <ClCompile Include="engine.cpp" />
     <ClCompile Include="experiments.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="metrics.cpp" />
+    <ClCompile Include="qos.cpp" />
     <ClCompile Include="topology.cpp" />
+    <ClCompile Include="traffic.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="config.h" />
     <ClInclude Include="csv_export.h" />
     <ClInclude Include="engine.h" />
     <ClInclude Include="experiments.h" />
     <ClInclude Include="metrics.h" />
+    <ClInclude Include="qos.h" />
     <ClInclude Include="topology.h" />
+    <ClInclude Include="traffic.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

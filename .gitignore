@@ -361,3 +361,18 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# NetSim: результаты прогонов и артефакты
+runs/
+test_output/
+__pycache__/
+*.pyc
+.dsh-office-*/
+tests/*.exe
+tests/*.obj
+*.log
+
+# Последняя конфигурация CLI (создаётся автоматически)
+results/last_config.ini
+
+# Промежуточные каталоги MSBuild
+dipl/

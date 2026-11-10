@@ -1,31 +1,41 @@
 #pragma once
-#include "experiments.h"
+// ---------------------------------------------------------------------------
+// csv_export.h — сериализация результатов симуляции в CSV.
+// ---------------------------------------------------------------------------
+
+#include "config.h"
 #include "engine.h"
+#include "experiments.h"
+
+#include <map>
 #include <string>
 #include <vector>
-#include <map>
 
-// Экспорт временных рядов одной симуляции
-void exportTimeSeries(const SimResult& res,
-                      const std::string& path);
+namespace netsim {
 
-// Экспорт сравнения топологий
-void exportTopologyComparison(const TopoCompResult& comp,
-                               const std::string& path);
+void exportTimeSeries(const SimResult& result, const std::string& path);
 
-// Экспорт параметрического sweep
-// sweep_data: {param -> {topo -> SweepResult}}, x_ranges: {param -> vector<double>}
+void exportTopologyComparison(const TopoCompResult& comparison,
+                              const std::string& path);
+
+void exportTopologySignificance(const TopoCompResult& comparison,
+                                const std::string& path);
+
 void exportParameterSweep(
     const std::map<std::string, std::map<std::string, SweepResult>>& sweep_data,
     const std::map<std::string, std::vector<double>>& x_ranges,
     const std::string& out_dir);
 
-// Экспорт FIFO vs Triage
-void exportStrategyComparison(const StrategyResults& res,
-                               const std::vector<double>& resource_levels,
-                               const std::string& path);
+void exportStrategyComparison(const StrategyResults& results,
+                              const std::vector<double>& resource_levels,
+                              const std::string& path);
 
-// Экспорт анализа векторов атак
 void exportAttackVectorAnalysis(
-    const std::map<std::string, std::map<std::string, MCResult>>& res_by_strategy,
+    const std::map<std::string, std::map<std::string, MCResult>>& results,
     const std::string& path);
+
+void exportRunMetadata(const SimConfig& config,
+                       const SimResult& result,
+                       const std::string& path);
+
+}  // namespace netsim
