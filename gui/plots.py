@@ -237,6 +237,46 @@ def plot_sweep(fig: Figure, sweep: dict[str, pd.DataFrame]) -> None:
                         hspace=0.42, wspace=0.22)
 
 
+def plot_degree_ccdf(fig: Figure, degree_frame: pd.DataFrame,
+                     structure: pd.Series | None, topology: str) -> None:
+    fig.clear()
+    style_figure(fig)
+    ax = fig.add_subplot(111)
+    style_axes(ax)
+    if degree_frame is None or degree_frame.empty:
+        empty(ax)
+        return
+
+    frame = degree_frame.sort_values("degree")
+    degree = pd.to_numeric(frame["degree"], errors="coerce").fillna(0)
+    count = pd.to_numeric(frame["count"], errors="coerce").fillna(0)
+    total = float(count.sum())
+    if total <= 0:
+        empty(ax)
+        return
+
+    ccdf = count[::-1].cumsum()[::-1] / total
+    mask = (degree >= 1) & (ccdf > 0)
+    ax.loglog(degree[mask], ccdf[mask], marker="o", ms=5, lw=1.8,
+              color=C_EQOS, label="CCDF степеней")
+
+    gamma = None
+    if structure is not None and "gamma_est" in structure:
+        try:
+            gamma = float(structure["gamma_est"])
+        except Exception:
+            gamma = None
+    title = f"{topology}: распределение степеней"
+    if gamma is not None and np.isfinite(gamma):
+        title += f"  (оценка γ ≈ {gamma:.2f})"
+    ax.set_title(title, pad=10)
+    ax.set_xlabel("Степень k")
+    ax.set_ylabel("P(K ≥ k)")
+    ax.grid(True, which="both", color=GRID, alpha=0.45, linestyle="--",
+            linewidth=0.7)
+    ax.legend(frameon=False, labelcolor=FG, fontsize=9)
+
+
 def plot_strategy(fig: Figure, frame: pd.DataFrame,
                   metric: str = "eff_qos_mean", ylabel: str = "E_QoS") -> None:
     fig.clear()

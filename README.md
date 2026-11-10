@@ -18,6 +18,8 @@
 - **Направленный граф**: пропускная способность, базовая задержка и текущая
   загрузка каждой дуги.
 - **Топологии**: звезда, кольцо, полносвязная, Эрдёша–Реньи, Барабаши–Альберта.
+- **Структурный анализ ER/BA**: степени, CCDF, оценка γ, кластеризация,
+  средняя длина пути, диаметр, ассортативность, компоненты.
 - **Трафик All-to-All** с итеративным распределением (Дейкстра + MSA) и
   моделированием заторов при отказах.
 - **Дискретно-событийное ядро**: пуассоновские атаки, бригады восстановления,
@@ -77,12 +79,14 @@ python plot_results.py results\run1
 | `strategy` | FIFO vs Triage при разных уровнях ресурсов |
 | `attack` | целевые, случайные и каскадные атаки |
 | `timeseries` | временные ряды одной реализации |
+| `structure` | только структурный анализ ER/BA (без симуляции) |
 | `all` | последовательный запуск всех сценариев |
 
 ## Структура проекта
 
 ```
 ├── topology.h/.cpp      направленный граф и генераторы топологий
+├── topology_metrics.h/.cpp  структурный анализ ER/BA
 ├── qos.h/.cpp           классы Y.1541, M/M/1(K), проверка путей
 ├── traffic.h/.cpp       All-to-All, Дейкстра, MSA, матрица путей
 ├── metrics.h/.cpp       E_phys, E_QoS, LCC, φ_w, IPTD/IPLR
@@ -107,6 +111,10 @@ python plot_results.py results\run1
 |---|---|
 | ![Атаки](docs/img/gui_attack_final.png) | ![Стратегии](docs/img/gui_strategy_phi.png) |
 
+| Структурный анализ BA |
+|---|
+| ![Структура](docs/img/gui_structure.png) |
+
 ## Тесты
 
 ```powershell
@@ -123,6 +131,9 @@ python run_gui.py --selftest
 - [PDF «Этап 1. Теоретическое обоснование»](docs/VKR_Etap1_Teoreticheskoe_obosnovanie.pdf)
 - [Архитектура](docs/02_arhitektura.md)
 - [Руководство пользователя](docs/03_rukovodstvo.md)
+- [Топологии ER и BA](docs/05_topolologii.md)
+- [DOCX «Топологии ER и BA»](docs/VKR_Topologii_ER_BA.docx)
+- [PDF «Топологии ER и BA»](docs/VKR_Topologii_ER_BA.pdf)
 - [Результаты экспериментов](docs/04_rezultaty.md)
 
 ## Ограничения модели

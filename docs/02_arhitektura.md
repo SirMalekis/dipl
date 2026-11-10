@@ -21,6 +21,7 @@
 │  main.cpp        CLI / интерактивное меню / selftest        │
 │  config.cpp      INI, валидация, производные параметры      │
 │  topology.cpp    направленный граф, ER, BA, star, ring      │
+│  topology_metrics.cpp  степени, CCDF, кластеризация, γ      │
 │  traffic.cpp     All-to-All, Дейкстра, MSA, матрица путей   │
 │  qos.cpp         Y.1541, M/M/1(K), проверка пути            │
 │  metrics.cpp     E_phys, E_QoS, LCC, φ_w, IPTD/IPLR         │
@@ -216,7 +217,7 @@ mean = area / T
 
 | Ключ | Смысл | По умолчанию |
 |---|---|---|
-| `scenario` | `topology`, `sweep`, `strategy`, `attack`, `timeseries`, `all` | `topology` |
+| `scenario` | `topology`, `sweep`, `strategy`, `attack`, `timeseries`, `structure`, `all` | `topology` |
 | `topologies` | список через запятую | все пять |
 | `num_nodes` | число узлов | 50 |
 | `n_sims` | число прогонов МК | 30 |
@@ -245,6 +246,8 @@ mean = area / T
 | `strategy_comparison.csv` | FIFO/Triage, значимость по E_QoS и φ_w |
 | `attack_vector_analysis.csv` | векторы атак × топологии |
 | `run_meta_<topo>.csv` | E0, число атак, ремонтов, очередь |
+| `topology_structure.csv` | структурные метрики всех топологий |
+| `topology_degrees_<topo>.csv` | гистограмма степеней |
 | `config.ini` | полная конфигурация прогона |
 
 Все файлы пишутся в UTF-8 с заголовком; числа — с фиксированной точностью
@@ -280,6 +283,7 @@ mean = area / T
 - **Атаки** — E_QoS по векторам и топологиям.
 - **FIFO/Triage** — переключение метрики E_QoS / φ_w, звёздочки значимых
   точек.
+- **Структура** — таблица метрик ER/BA и CCDF распределения степеней.
 
 ### 7.3 Отказоустойчивость
 
@@ -291,9 +295,9 @@ mean = area / T
 
 ## 8. Тестирование
 
-- `tests/test_core.cpp` — 65 проверок: таблица Y.1541, формулы M/M/1,
-  генераторы всех топологий, All-to-All, метрики, конфигурация, DES,
-  воспроизводимость, CSV.
+- `tests/test_core.cpp` — 78 проверок: таблица Y.1541, формулы M/M/1,
+  генераторы всех топологий, структурный анализ ER/BA, All-to-All, метрики,
+  конфигурация, DES, воспроизводимость, CSV.
 - `dipl.exe selftest` — быстрая проверка на встроенных данных.
 - `run_gui.py --selftest` — сквозной прогон GUI: форма → ядро → CSV →
   график → снимок окна.

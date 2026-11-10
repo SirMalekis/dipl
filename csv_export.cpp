@@ -244,8 +244,7 @@ void exportAttackVectorAnalysis(
 
 void exportRunMetadata(const SimConfig& config,
                        const SimResult& result,
-                       const std::string& path) {
-    auto file = openCsv(path);
+                       const std::string& path) {    auto file = openCsv(path);
     if (!file) return;
 
     file << "key,value\n";
@@ -290,6 +289,41 @@ void exportRunMetadata(const SimConfig& config,
     number("mean_slots_used", result.mean_slots_used);
     number("max_queue_depth", result.max_queue_depth);
 
+    std::cout << "Сохранено: " << path << "\n";
+}
+
+void exportTopologyStructure(const std::vector<TopologyStructure>& structures,
+                             const std::string& path) {
+    auto file = openCsv(path);
+    if (!file) return;
+
+    file << "topology,nodes,edges,avg_degree,min_degree,max_degree,"
+            "degree_cv,clustering,avg_path_length,diameter,assortativity,"
+            "components,lcc_fraction,expected_avg_degree,ccdf_slope,"
+            "gamma_est,purpose\n";
+
+    for (const auto& item : structures) {
+        file << escape(item.topology) << "," << item.num_nodes << ","
+             << item.num_edges << "," << item.avg_degree << ","
+             << item.min_degree << "," << item.max_degree << ","
+             << item.degree_cv << "," << item.global_clustering << ","
+             << item.avg_path_length << "," << item.diameter << ","
+             << item.assortativity << "," << item.components << ","
+             << item.lcc_fraction << "," << item.expected_avg_degree << ","
+             << item.ccdf_slope << "," << item.gamma_est << ","
+             << escape(item.purpose) << "\n";
+    }
+    std::cout << "Сохранено: " << path << "\n";
+}
+
+void exportDegreeDistribution(const TopologyStructure& structure,
+                              const std::string& path) {
+    auto file = openCsv(path);
+    if (!file) return;
+
+    file << "degree,count\n";
+    for (const auto& [degree, count] : structure.degree_histogram)
+        file << degree << "," << count << "\n";
     std::cout << "Сохранено: " << path << "\n";
 }
 

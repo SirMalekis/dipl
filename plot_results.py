@@ -75,6 +75,16 @@ def main() -> int:
         plots.plot_sweep(figure, sweep)
         save(figure, out_dir / "sweep.png")
 
+    structure = data.load_structure(run_dir)
+    degrees = data.load_degrees(run_dir)
+    if structure is not None:
+        for topology, degree_frame in degrees.items():
+            subset = structure[structure["topology"] == topology]
+            row = subset.iloc[0] if not subset.empty else None
+            figure = Figure(figsize=(8, 5), dpi=140)
+            plots.plot_degree_ccdf(figure, degree_frame, row, topology)
+            save(figure, out_dir / f"degree_{topology}.png")
+
     print("Готово:", out_dir)
     return 0
 

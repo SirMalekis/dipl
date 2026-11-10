@@ -42,6 +42,8 @@ python run_gui.py
 Секции:
 
 1. **Сценарий и топология** — постановка эксперимента и набор топологий.
+   Для ER задаётся вероятность ребра `p` (`⟨k⟩ = p(N−1)`), для BA — число
+   связей нового узла `m` (теоретически `γ ≈ 3`, `⟨k⟩ ≈ 2m`).
 2. **Масштаб моделирования** — число узлов, прогонов МК, горизонт, число
    точек временного ряда, seed.
 3. **Деструктивные воздействия** — стратегия и интенсивность атак,
@@ -96,6 +98,8 @@ python run_gui.py
 - **Атаки** — сравнение targeted / random / cascading.
 - **FIFO/Triage** — переключение E_QoS / φ_w; звёздочка — значимое
   преимущество Triage (p < 0,05).
+- **Структура** — таблица метрик выбранной топологии (степени, кластеризация,
+  длина пути, диаметр, ассортативность, γ) и CCDF распределения степеней.
 
 Кнопка **PNG** сохраняет текущий график.
 
@@ -131,6 +135,14 @@ python run_gui.py
 Одна реализация на топологию; полезно для отладки и иллюстрации динамики.
 Результат: `timeseries_<topo>.csv` и `run_meta_<topo>.csv`.
 
+### 4.6 Структурный анализ ER/BA
+
+Сценарий `structure` не запускает симуляцию: он генерирует графы и считает
+структурные метрики. Для каждого прогона файлы `topology_structure.csv` и
+`topology_degrees_<topo>.csv` создаются автоматически, поэтому вкладка
+«Структура» доступна и для обычных сценариев. Подробное описание моделей —
+в [docs/05_topolologii.md](05_topolologii.md).
+
 ## 5. Пакетный режим
 
 ```powershell
@@ -149,12 +161,18 @@ python run_gui.py
 
 # Повтор последней конфигурации
 .\x64\Release\dipl.exe run --quick
+
+# Только структурный анализ ER/BA
+.\x64\Release\dipl.exe run --scenario structure `
+    --topologies erdos_renyi,barabasi_albert `
+    --num-nodes 100 --er-p 0.05 --ba-m 2 `
+    --out results\structure
 ```
 
 Основные опции:
 
 ```text
---scenario topology|sweep|strategy|attack|timeseries|all
+--scenario topology|sweep|strategy|attack|timeseries|structure|all
 --config <path>          загрузить INI
 --out <dir>              каталог результатов
 --topology <name>        одна топология

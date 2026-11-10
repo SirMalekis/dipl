@@ -38,7 +38,7 @@ $runs = @(
     },
     @{
         Name = "sweep_lambda"
-        Args = @("run", "--scenario", "sweep", "--topologies", "star,ring,full_mesh",
+        Args = @("run", "--scenario", "sweep", "--topologies", "star,ring,full_mesh,erdos_renyi,barabasi_albert",
                  "--num-nodes", "50", "--sims", "20", "--T", "120",
                  "--sample-points", "160", "--resources", "200", "--slots", "3",
                  "--qos-class", "1", "--demand", "2000000",
@@ -47,7 +47,7 @@ $runs = @(
     },
     @{
         Name = "sweep_resources"
-        Args = @("run", "--scenario", "sweep", "--topologies", "star,ring,full_mesh",
+        Args = @("run", "--scenario", "sweep", "--topologies", "star,ring,full_mesh,erdos_renyi,barabasi_albert",
                  "--num-nodes", "50", "--sims", "20", "--T", "120",
                  "--sample-points", "160", "--lambda", "1.5", "--slots", "2",
                  "--qos-class", "1", "--demand", "2000000",
@@ -56,7 +56,7 @@ $runs = @(
     },
     @{
         Name = "strategy"
-        Args = @("run", "--scenario", "strategy", "--topologies", "star,ring,full_mesh",
+        Args = @("run", "--scenario", "strategy", "--topologies", "star,ring,full_mesh,erdos_renyi,barabasi_albert",
                  "--num-nodes", "50", "--sims", "30", "--T", "150",
                  "--sample-points", "200", "--lambda", "1.5", "--slots", "2",
                  "--qos-class", "1", "--demand", "2000000",
@@ -65,7 +65,7 @@ $runs = @(
     },
     @{
         Name = "attack"
-        Args = @("run", "--scenario", "attack", "--topologies", "star,ring,full_mesh",
+        Args = @("run", "--scenario", "attack", "--topologies", "star,ring,full_mesh,erdos_renyi,barabasi_albert",
                  "--attack-strategies", "targeted,random,cascading",
                  "--num-nodes", "50", "--sims", "20", "--T", "150",
                  "--sample-points", "200", "--lambda", "1.2",

@@ -12,6 +12,7 @@
 #include "experiments.h"
 #include "qos.h"
 #include "topology.h"
+#include "topology_metrics.h"
 
 #include <algorithm>
 #include <cctype>
@@ -206,8 +207,7 @@ void printTopologyTable(const TopoCompResult& comparison) {
 }
 
 void printStrategyTable(const StrategyResults& results,
-                        const std::vector<double>& levels) {
-    hr();
+                        const std::vector<double>& levels) {    hr();
     std::cout << kBold << "  FIFO vs Triage (E_QoS)\n" << kReset;
     for (const auto& [topo, gk_map] : results) {
         std::cout << "\n  [" << topo << "]\n  " << std::left << std::setw(10)
@@ -230,6 +230,50 @@ void printStrategyTable(const StrategyResults& results,
 }
 
 // ---------------------------------------------------------------------------
+// Структурный анализ топологий
+// ---------------------------------------------------------------------------
+std::vector<TopologyStructure> analyzeTopologies(const SimConfig& config) {
+    std::vector<TopologyStructure> result;
+    for (const auto& topo : config.topologies) {
+        SimConfig copy = config;
+        copy.topology = topo;
+        const Graph graph = createNetworkTopology(copy.topologyParams());
+        result.push_back(analyzeTopology(graph, copy.topologyParams()));
+    }
+    return result;
+}
+
+void printTopologyStructure(const std::vector<TopologyStructure>& structures) {
+    hr();
+    std::cout << kBold << "  Структура топологий\n" << kReset;
+    std::cout << "  " << std::left << std::setw(18) << "Топология"
+              << std::setw(5) << "N" << std::setw(6) << "E"
+              << std::setw(9) << "⟨k⟩" << std::setw(8) << "k_max"
+              << std::setw(8) << "C" << std::setw(9) << "L"
+              << std::setw(6) << "D" << std::setw(9) << "r"
+              << std::setw(8) << "γ" << '\n';
+    hr('-', 92);
+    std::cout << std::fixed << std::setprecision(3);
+    for (const auto& item : structures) {
+        std::cout << "  " << std::left << std::setw(18) << item.topology
+                  << std::setw(5) << item.num_nodes
+                  << std::setw(6) << item.num_edges
+                  << std::setw(9) << item.avg_degree
+                  << std::setw(8) << item.max_degree
+                  << std::setw(8) << item.global_clustering
+                  << std::setw(9) << item.avg_path_length
+                  << std::setw(6) << item.diameter
+                  << std::setw(9) << item.assortativity;
+        if (std::isfinite(item.gamma_est))
+            std::cout << std::setw(8) << item.gamma_est;
+        else
+            std::cout << std::setw(8) << "—";
+        std::cout << '\n';
+    }
+    hr();
+}
+
+// ---------------------------------------------------------------------------
 // Запуск сценариев
 // ---------------------------------------------------------------------------
 int runScenario(SimConfig config, const std::string& scenario,
@@ -243,18 +287,36 @@ int runScenario(SimConfig config, const std::string& scenario,
         std::cerr << "Ошибка конфигурации: " << error << "\n";
         return 2;
     }
-    if (!config.saveToFile(out_dir + "/config.ini", error)) {
-        std::cerr << "Предупреждение: " << error << "\n";
+    if (scenario != "structure") {
+        if (!config.saveToFile(out_dir + "/config.ini", error)) {
+            std::cerr << "Предупреждение: " << error << "\n";
+        }
+    }
+
+    const std::vector<TopologyStructure> structures = analyzeTopologies(config);
+    exportTopologyStructure(structures,
+                            out_dir + "/topology_structure.csv");
+    for (const auto& structure : structures) {
+        exportDegreeDistribution(
+            structure,
+            out_dir + "/topology_degrees_" + structure.topology + ".csv");
     }
 
     const ProgressFn progress =
         show_progress ? ProgressFn(progressPrinter) : ProgressFn{};
+
+    if (scenario == "structure") {
+        printTopologyStructure(structures);
+        progress(1.0, "структурный анализ");
+        return 0;
+    }
 
     try {
         if (scenario == "topology") {
             const auto comparison = runTopologyComparison(
                 config, config.topologies, config.n_sims, progress);
             printTopologyTable(comparison);
+            printTopologyStructure(structures);
             for (const auto& [topo, mc] : comparison.results) {
                 if (mc.baseline_qos_rate < 0.999) {
                     std::cout << kYellow << "  Внимание: для топологии " << topo
@@ -433,7 +495,7 @@ void printUsage() {
         << "  netsim selftest                 самопроверка\n"
         << "  netsim version                  версия\n\n"
         << "Опции run:\n"
-        << "  --scenario topology|sweep|strategy|attack|timeseries|all\n"
+        << "  --scenario topology|sweep|strategy|attack|timeseries|structure|all\n"
         << "  --config <path>                 загрузить INI\n"
         << "  --out <dir>                     каталог результатов\n"
         << "  --topology <name>               одна топология\n"
@@ -467,8 +529,32 @@ int runCli(int argc, char** argv) {
         index = 3;
     }
 
+    // Конфигурация загружается первой, независимо от позиции --config,
+    // чтобы последующие опции (например, --scenario) её переопределяли.
+    std::string config_path;
+    for (int i = index; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--config") {
+            if (i + 1 < argc) config_path = argv[++i];
+        } else if (arg.rfind("--config=", 0) == 0) {
+            config_path = arg.substr(std::string("--config=").size());
+        }
+    }
+    if (!config_path.empty()) {
+        std::string error;
+        if (!config.loadFromFile(config_path, error)) {
+            std::cerr << "Ошибка конфигурации: " << error << "\n";
+            return 2;
+        }
+    }
+
     for (int i = index; i < argc; ++i) {
         std::string arg = argv[i];
+        if (arg == "--config") {
+            ++i;  // значение уже обработано выше
+            continue;
+        }
+        if (arg.rfind("--config=", 0) == 0) continue;
         if (arg == "--progress") {
             progress = true;
             continue;
@@ -499,14 +585,6 @@ int runCli(int argc, char** argv) {
         std::replace(key.begin(), key.end(), '-', '_');
         const std::string normalized = lower(key);
 
-        if (normalized == "config") {
-            std::string error;
-            if (!config.loadFromFile(value, error)) {
-                std::cerr << "Ошибка конфигурации: " << error << "\n";
-                return 2;
-            }
-            continue;
-        }
         if (normalized == "progress") {
             progress = true;
             continue;

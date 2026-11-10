@@ -9,6 +9,7 @@
 #include "metrics.h"
 #include "qos.h"
 #include "topology.h"
+#include "topology_metrics.h"
 #include "traffic.h"
 
 #include <algorithm>
@@ -137,6 +138,69 @@ int main() {
         for (const auto& list : g.adj)
             degree_sum += static_cast<int>(list.size());
         check(g.num_edges == degree_sum, name + ": индекс дуг корректен");
+    }
+
+    // ---------------------------------------------------------------------
+    // Структурный анализ ER/BA
+    // ---------------------------------------------------------------------
+    {
+        Graph line5 = makeLine(5, 10.0e6, 0.001);
+        TopologyParams line_params;
+        line_params.topology = "line";
+        line_params.num_nodes = 5;
+        const TopologyStructure line_structure =
+            analyzeTopology(line5, line_params);
+        check(line_structure.components == 1, "Структура: линия связна");
+        checkNear(line_structure.avg_path_length, 2.0, 1e-12,
+                  "Структура: средняя длина пути линии");
+        check(line_structure.diameter == 4, "Структура: диаметр линии");
+        checkNear(line_structure.global_clustering, 0.0, 1e-12,
+                  "Структура: кластеризация линии");
+
+        Graph triangle = makeLine(3, 10.0e6, 0.001);
+        triangle.addBidirectional(2, 0, 10.0e6, 0.001);
+        triangle.rebuildEdgeIndex();
+        const TopologyStructure triangle_structure =
+            analyzeTopology(triangle, line_params);
+        checkNear(triangle_structure.global_clustering, 1.0, 1e-12,
+                  "Структура: кластеризация треугольника");
+        check(triangle_structure.diameter == 1,
+              "Структура: диаметр треугольника");
+    }
+
+    {
+        TopologyParams er;
+        er.topology = "erdos_renyi";
+        er.num_nodes = 100;
+        er.er_p = 0.05;
+        er.seed = 17;
+        const Graph er_graph = createNetworkTopology(er);
+        const TopologyStructure er_structure =
+            analyzeTopology(er_graph, er);
+        check(std::abs(er_structure.avg_degree -
+                       er_structure.expected_avg_degree) < 1.5,
+              "ER: средняя степень близка к p(N−1)");
+        check(er_structure.components == 1, "ER: граф связен");
+        check(er_structure.degree_cv < 0.6,
+              "ER: умеренный разброс степеней");
+
+        TopologyParams ba;
+        ba.topology = "barabasi_albert";
+        ba.num_nodes = 100;
+        ba.ba_m = 2;
+        ba.seed = 17;
+        const Graph ba_graph = createNetworkTopology(ba);
+        const TopologyStructure ba_structure =
+            analyzeTopology(ba_graph, ba);
+        check(ba_structure.max_degree >= 8, "BA: есть хабы");
+        check(ba_structure.degree_cv > 0.4,
+              "BA: разброс степеней выше ER");
+        check(ba_structure.gamma_est > 1.5 &&
+                  ba_structure.gamma_est < 6.0,
+              "BA: оценка γ в разумном диапазоне");
+        check(std::abs(ba_structure.avg_degree -
+                       ba_structure.expected_avg_degree) < 1.0,
+              "BA: средняя степень близка к 2m");
     }
 
     // ---------------------------------------------------------------------

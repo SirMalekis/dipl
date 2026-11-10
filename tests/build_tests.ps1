@@ -1,4 +1,4 @@
-﻿# Сборка и запуск модульных тестов ядра.
+# Сборка и запуск модульных тестов ядра.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
@@ -11,7 +11,7 @@ if (!(Test-Path $vcvars)) { throw "vcvars64.bat не найден" }
 
 $sources = @(
     "tests\test_core.cpp",
-    "qos.cpp", "topology.cpp", "traffic.cpp", "metrics.cpp",
+    "qos.cpp", "topology.cpp", "topology_metrics.cpp", "traffic.cpp", "metrics.cpp",
     "config.cpp", "engine.cpp", "experiments.cpp", "csv_export.cpp"
 ) -join " "
 

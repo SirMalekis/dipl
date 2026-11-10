@@ -64,6 +64,21 @@ def load_sweep(run_dir: Path) -> dict[str, pd.DataFrame]:
     return result
 
 
+def load_structure(run_dir: Path) -> pd.DataFrame | None:
+    path = run_dir / "topology_structure.csv"
+    return read_csv(path) if path.is_file() else None
+
+
+def load_degrees(run_dir: Path) -> dict[str, pd.DataFrame]:
+    result: dict[str, pd.DataFrame] = {}
+    for path in sorted(run_dir.glob("topology_degrees_*.csv")):
+        name = path.stem.replace("topology_degrees_", "")
+        frame = read_csv(path)
+        if frame is not None and not frame.empty:
+            result[name] = frame
+    return result
+
+
 def load_attack(run_dir: Path) -> pd.DataFrame | None:
     path = run_dir / "attack_vector_analysis.csv"
     return read_csv(path) if path.is_file() else None

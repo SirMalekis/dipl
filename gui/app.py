@@ -7,6 +7,8 @@ import tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox
+import math
+import time
 
 import customtkinter as ctk
 import matplotlib
@@ -25,6 +27,19 @@ TOPO_LABELS = {
     "barabasi_albert": "Барабаши–Альберт",
 }
 TOPO_ORDER = ["star", "ring", "full_mesh", "erdos_renyi", "barabasi_albert"]
+
+TOPO_DESCRIPTIONS = {
+    "erdos_renyi": (
+        "ER (G(N,p)) — однородный случайный граф: каждое ребро независимо "
+        "с вероятностью p, степени близки к распределению Пуассона, "
+        "выраженных хабов нет. ⟨k⟩ = p(N−1)."
+    ),
+    "barabasi_albert": (
+        "BA — безмасштабная сеть с предпочтительным присоединением: новый "
+        "узел подключается к m существующим пропорционально их степени. "
+        "P(k) ~ k⁻³, есть хабы; m — число связей нового узла."
+    ),
+}
 
 SCENARIOS = [
     ("topology", "Сравнение топологий"),
@@ -124,6 +139,8 @@ class App(ctk.CTk):
         self.sweep_data: dict = {}
         self.attack_df = None
         self.strategy_df = None
+        self.structure_df = None
+        self.degree_data: dict = {}
         self._runs: dict[str, Path] = {}
         self._selftest = False
         self._selftest_screenshot: Path | None = None
@@ -340,10 +357,17 @@ class App(ctk.CTk):
                 checkbox_width=18, checkbox_height=18).grid(
                 row=0, column=index, padx=(0, 14), pady=2, sticky="w")
         self._row(body, 2, "Топологии", topo_frame)
+        ctk.CTkLabel(
+            body,
+            text=TOPO_DESCRIPTIONS["erdos_renyi"] + "\n" +
+                 TOPO_DESCRIPTIONS["barabasi_albert"],
+            font=self.font_small, text_color=plots.MUTED, anchor="w",
+            justify="left", wraplength=820).grid(
+            row=3, column=0, columnspan=3, sticky="w", pady=(2, 6))
 
-        self._entry(body, 3, "Узлов N", "num_nodes", "50",
+        self._entry(body, 4, "Узлов N", "num_nodes", "50",
                     "2…1000", 120)
-        self._entry(body, 4, "Seed", "seed", "42", "0 = случайный", 120)
+        self._entry(body, 5, "Seed", "seed", "42", "0 = случайный", 120)
 
         # 2. Масштаб ---------------------------------------------------
         body = self._section(
@@ -459,9 +483,9 @@ class App(ctk.CTk):
                                progress_color="#1f6feb")
         self._row(body, 0, "Профили", switch, "server / switch / host")
         self._entry(body, 1, "ER: вероятность p", "er_p", "0.10",
-                    "0…1", 120)
+                    "⟨k⟩ = p(N−1)", 120)
         self._entry(body, 2, "BA: связей m", "ba_m", "2",
-                    "1…N−1", 120)
+                    "γ ≈ 3; m=2 — хрупкая", 120)
         self._entry(body, 3, "Джиттер задержки", "latency_jitter_ms", "1.0",
                     "мс", 120)
 
@@ -825,9 +849,11 @@ class App(ctk.CTk):
         self.tabview.grid(row=3, column=0, sticky="nsew", padx=14,
                           pady=(2, 12))
 
-        for name in ("Динамика", "Топологии", "Sweep", "Атаки", "FIFO/Triage"):
+        for name in ("Динамика", "Топологии", "Sweep", "Атаки",
+                     "FIFO/Triage", "Структура"):
             tab = self.tabview.add(name)
             tab.grid_columnconfigure(0, weight=1)
+            canvas_col = 0
             if name == "Динамика":
                 bar = ctk.CTkFrame(tab, fg_color="transparent")
                 bar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 0))
@@ -859,13 +885,40 @@ class App(ctk.CTk):
                     command=lambda _: self._draw_active_tab()).pack(
                     side="left", padx=(8, 0))
                 canvas_row = 1
+            elif name == "Структура":
+                tab.grid_columnconfigure(0, weight=0)
+                tab.grid_columnconfigure(1, weight=1)
+                bar = ctk.CTkFrame(tab, fg_color="transparent")
+                bar.grid(row=0, column=0, columnspan=2, sticky="ew",
+                         padx=8, pady=(8, 0))
+                ctk.CTkLabel(bar, text="Топология:", font=self.font_small,
+                             text_color=plots.MUTED).pack(side="left")
+                self.structure_topo_var = tk.StringVar(value="")
+                self.structure_topo_menu = ctk.CTkOptionMenu(
+                    bar, values=["—"], variable=self.structure_topo_var,
+                    width=220, fg_color="#0d1117", button_color="#1f6feb",
+                    button_hover_color="#388bfd", text_color=plots.FG,
+                    dropdown_fg_color=plots.PANEL,
+                    dropdown_text_color=plots.FG, font=self.font_small,
+                    command=self._on_structure_topo_changed)
+                self.structure_topo_menu.pack(side="left", padx=(8, 0))
+
+                self.structure_text = ctk.CTkTextbox(
+                    tab, width=370, fg_color="#0d1117",
+                    border_width=1, border_color=plots.GRID,
+                    text_color=plots.FG, font=("Consolas", 11), wrap="word")
+                self.structure_text.grid(row=1, column=0, sticky="nsew",
+                                         padx=(8, 4), pady=6)
+                self.structure_text.configure(state="disabled")
+                canvas_row = 1
+                canvas_col = 1
             else:
                 canvas_row = 0
             tab.grid_rowconfigure(canvas_row, weight=1)
             figure = Figure(figsize=(9, 5.2), dpi=100)
             figure.patch.set_facecolor(plots.BG)
             canvas = FigureCanvasTkAgg(figure, master=tab)
-            canvas.get_tk_widget().grid(row=canvas_row, column=0,
+            canvas.get_tk_widget().grid(row=canvas_row, column=canvas_col,
                                         sticky="nsew", padx=6, pady=6)
             self.figures[name] = figure
             self.canvases[name] = canvas
@@ -897,6 +950,8 @@ class App(ctk.CTk):
         self.sweep_data = data.load_sweep(path)
         self.attack_df = data.load_attack(path)
         self.strategy_df = data.load_strategy(path)
+        self.structure_df = data.load_structure(path)
+        self.degree_data = data.load_degrees(path)
 
         topologies = list(self.ts_data.keys())
         self.ts_topo_menu.configure(values=topologies or ["—"])
@@ -904,6 +959,15 @@ class App(ctk.CTk):
             self.ts_topo_var.set(topologies[0])
         else:
             self.ts_topo_var.set("—")
+
+        structures: list[str] = []
+        if self.structure_df is not None and not self.structure_df.empty:
+            structures = [str(x) for x in self.structure_df["topology"].tolist()]
+        self.structure_topo_menu.configure(values=structures or ["—"])
+        preferred = ("barabasi_albert" if "barabasi_albert" in structures
+                     else "erdos_renyi" if "erdos_renyi" in structures
+                     else structures[0] if structures else "—")
+        self.structure_topo_var.set(preferred)
 
         selected = self.ts_topo_var.get() if topologies else None
         summary = data.summarize_run(path, selected)
@@ -945,6 +1009,76 @@ class App(ctk.CTk):
 
     def _on_tab_changed(self) -> None:
         self._draw_active_tab()
+
+    def _on_structure_topo_changed(self, topology: str) -> None:
+        self._draw_structure()
+        canvas = self.canvases.get("Структура")
+        if canvas is not None:
+            canvas.draw_idle()
+
+    def _draw_structure(self) -> None:
+        figure = self.figures.get("Структура")
+        if figure is None:
+            return
+
+        if self.structure_df is None or self.structure_df.empty:
+            self._set_structure_text(
+                "Структурный анализ для этого прогона не найден.\n\n"
+                "Он создаётся автоматически при запуске сценария "
+                "(файл topology_structure.csv) или отдельной командой:\n"
+                "dipl.exe run --scenario structure --config config.ini --out .")
+            plots.empty_figure(figure)
+            return
+
+        topology = self.structure_topo_var.get()
+        subset = self.structure_df[self.structure_df["topology"] == topology]
+        if subset.empty:
+            self._set_structure_text("Нет данных по выбранной топологии.")
+            plots.empty_figure(figure)
+            return
+
+        row = subset.iloc[0]
+
+        def value(key: str, digits: int = 3) -> str:
+            try:
+                number = float(row.get(key, 0.0))
+            except Exception:
+                return "—"
+            if not math.isfinite(number):
+                return "—"
+            if abs(number) < 1.0 and number != 0.0:
+                return f"{number:.3f}"
+            return f"{number:.{digits}f}"
+
+        lines = [
+            f"Топология: {topology}",
+            f"Назначение: {row.get('purpose', '—')}",
+            "",
+            f"Узлов N: {value('nodes', 0)}",
+            f"Рёбер E: {value('edges', 0)}",
+            f"Средняя степень ⟨k⟩: {value('avg_degree')}",
+            f"Мин./макс. степень: {value('min_degree', 0)} / "
+            f"{value('max_degree', 0)}",
+            f"Коэффициент вариации k: {value('degree_cv')}",
+            f"Кластеризация C: {value('clustering')}",
+            f"Средняя длина пути L: {value('avg_path_length')}",
+            f"Диаметр D: {value('diameter', 0)}",
+            f"Ассортативность r: {value('assortativity')}",
+            f"Компонент связности: {value('components', 0)}",
+            f"Доля LCC: {value('lcc_fraction')}",
+            f"Ожидаемая ⟨k⟩ модели: {value('expected_avg_degree')}",
+            f"Наклон CCDF: {value('ccdf_slope')}",
+            f"Оценка γ (Хилл): {value('gamma_est')}",
+        ]
+        self._set_structure_text("\n".join(lines))
+        plots.plot_degree_ccdf(
+            figure, self.degree_data.get(topology), row, topology)
+
+    def _set_structure_text(self, text: str) -> None:
+        self.structure_text.configure(state="normal")
+        self.structure_text.delete("1.0", "end")
+        self.structure_text.insert("1.0", text)
+        self.structure_text.configure(state="disabled")
 
     def _draw_active_tab(self) -> None:
         if not self.figures:
@@ -993,6 +1127,8 @@ class App(ctk.CTk):
                     ylabel = "φ_w" if metric == "phi_mean" else "E_QoS"
                     plots.plot_strategy(figure, self.strategy_df,
                                         metric=metric, ylabel=ylabel)
+            elif name == "Структура":
+                self._draw_structure()
         except Exception as exc:
             figure.clear()
             axes = figure.add_subplot(111)
@@ -1106,7 +1242,16 @@ class App(ctk.CTk):
             self._draw_active_tab()
 
     def capture_window(self, path: Path) -> None:
+        self.deiconify()
+        self.lift()
+        try:
+            self.attributes("-topmost", True)
+        except Exception:
+            pass
+        self.focus_force()
         self.update_idletasks()
+        self.update()
+        time.sleep(0.5)
         self.update()
         try:
             from PIL import ImageGrab
@@ -1121,6 +1266,11 @@ class App(ctk.CTk):
             print("SCREENSHOT", path)
         except Exception as exc:
             print("SCREENSHOT_ERROR", exc)
+        finally:
+            try:
+                self.attributes("-topmost", False)
+            except Exception:
+                pass
 
     def _on_close(self) -> None:
         if self.runner.running:

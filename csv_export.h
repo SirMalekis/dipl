@@ -6,6 +6,7 @@
 #include "config.h"
 #include "engine.h"
 #include "experiments.h"
+#include "topology_metrics.h"
 
 #include <map>
 #include <string>
@@ -37,5 +38,11 @@ void exportAttackVectorAnalysis(
 void exportRunMetadata(const SimConfig& config,
                        const SimResult& result,
                        const std::string& path);
+
+void exportTopologyStructure(const std::vector<TopologyStructure>& structures,
+                             const std::string& path);
+
+void exportDegreeDistribution(const TopologyStructure& structure,
+                              const std::string& path);
 
 }  // namespace netsim

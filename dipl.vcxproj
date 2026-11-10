@@ -147,6 +147,7 @@
     <ClCompile Include="metrics.cpp" />
     <ClCompile Include="qos.cpp" />
     <ClCompile Include="topology.cpp" />
+    <ClCompile Include="topology_metrics.cpp" />
     <ClCompile Include="traffic.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -157,6 +158,7 @@
     <ClInclude Include="metrics.h" />
     <ClInclude Include="qos.h" />
     <ClInclude Include="topology.h" />
+    <ClInclude Include="topology_metrics.h" />
     <ClInclude Include="traffic.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
