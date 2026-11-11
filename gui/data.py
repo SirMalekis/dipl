@@ -79,6 +79,20 @@ def load_degrees(run_dir: Path) -> dict[str, pd.DataFrame]:
     return result
 
 
+def load_meta(run_dir: Path) -> dict[str, dict[str, str]]:
+    result: dict[str, dict[str, str]] = {}
+    for path in sorted(run_dir.glob("run_meta_*.csv")):
+        name = path.stem.replace("run_meta_", "")
+        frame = read_csv(path)
+        if frame is None or "key" not in frame.columns:
+            continue
+        values: dict[str, str] = {}
+        for _, row in frame.iterrows():
+            values[str(row["key"])] = str(row.get("value", ""))
+        result[name] = values
+    return result
+
+
 def load_attack(run_dir: Path) -> pd.DataFrame | None:
     path = run_dir / "attack_vector_analysis.csv"
     return read_csv(path) if path.is_file() else None

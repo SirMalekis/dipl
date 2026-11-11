@@ -17,7 +17,7 @@ matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from . import core, data, plots
+from . import core, data, plots, summary
 from .table import DataTable
 
 TOPO_LABELS = {
@@ -159,6 +159,9 @@ class App(ctk.CTk):
         self._runs: dict[str, Path] = {}
         self.data_files: dict[str, Path] = {}
         self.data_table: DataTable | None = None
+        self.summary_sets: list[tuple[str, str]] = []
+        self.summary_key_by_label: dict[str, str] = {}
+        self.summary_table: DataTable | None = None
         self._selftest = False
         self._selftest_screenshot: Path | None = None
 
@@ -832,8 +835,8 @@ class App(ctk.CTk):
         ctk.CTkButton(top, text="Таблицы", width=100, height=30,
                       fg_color="transparent", border_width=1,
                       border_color=plots.GRID, text_color=plots.FG,
-                      command=self._open_data_tab).grid(row=0, column=4,
-                                                        padx=(8, 0))
+                      command=self._open_summary_tab).grid(row=0, column=4,
+                                                           padx=(8, 0))
 
         cards = ctk.CTkFrame(page, fg_color="transparent")
         cards.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
@@ -877,7 +880,7 @@ class App(ctk.CTk):
                           pady=(2, 12))
 
         for name in ("Динамика", "Топологии", "Sweep", "Атаки",
-                     "FIFO/Triage", "Структура", "Данные"):
+                     "FIFO/Triage", "Структура", "Сводка", "Данные"):
             tab = self.tabview.add(name)
             tab.grid_columnconfigure(0, weight=1)
             canvas_col = 0
@@ -900,9 +903,8 @@ class App(ctk.CTk):
                     fg_color="transparent", border_width=1,
                     border_color=plots.GRID, text_color=plots.FG,
                     font=self.font_small,
-                    command=lambda: self._open_data(
-                        f"timeseries_{self.ts_topo_var.get()}.csv")).pack(
-                    side="right")
+                    command=lambda: self._open_summary(
+                        "Временные ряды")).pack(side="right")
                 canvas_row = 1
             elif name == "FIFO/Triage":
                 bar = ctk.CTkFrame(tab, fg_color="transparent")
@@ -924,8 +926,8 @@ class App(ctk.CTk):
                     fg_color="transparent", border_width=1,
                     border_color=plots.GRID, text_color=plots.FG,
                     font=self.font_small,
-                    command=lambda: self._open_data(
-                        "strategy_comparison.csv")).pack(side="right")
+                    command=lambda: self._open_summary(
+                        "FIFO/Triage")).pack(side="right")
                 canvas_row = 1
             elif name in ("Топологии", "Sweep", "Атаки"):
                 bar = ctk.CTkFrame(tab, fg_color="transparent")
@@ -933,12 +935,11 @@ class App(ctk.CTk):
                 ctk.CTkLabel(bar, text="Результаты:", font=self.font_small,
                              text_color=plots.MUTED).pack(side="left")
                 target = {
-                    "Топологии": "topology_comparison.csv",
-                    "Sweep": "sweep_",
-                    "Атаки": "attack_vector_analysis.csv",
+                    "Топологии": "Топологии",
+                    "Sweep": "Sweep",
+                    "Атаки": "Атаки",
                 }[name]
-                command = (self._open_sweep_data if name == "Sweep"
-                           else lambda f=target: self._open_data(f))
+                command = lambda t=target: self._open_summary(t)
                 ctk.CTkButton(
                     bar, text="Таблица", width=90, height=28,
                     fg_color="transparent", border_width=1,
@@ -967,8 +968,8 @@ class App(ctk.CTk):
                     fg_color="transparent", border_width=1,
                     border_color=plots.GRID, text_color=plots.FG,
                     font=self.font_small,
-                    command=lambda: self._open_data(
-                        "topology_structure.csv")).pack(side="right")
+                    command=lambda: self._open_summary(
+                        "Структура")).pack(side="right")
 
                 self.structure_text = ctk.CTkTextbox(
                     tab, width=370, fg_color="#0d1117",
@@ -979,6 +980,30 @@ class App(ctk.CTk):
                 self.structure_text.configure(state="disabled")
                 canvas_row = 1
                 canvas_col = 1
+            elif name == "Сводка":
+                tab.grid_rowconfigure(2, weight=1)
+                bar = ctk.CTkFrame(tab, fg_color="transparent")
+                bar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 0))
+                ctk.CTkLabel(bar, text="Таблица:", font=self.font_small,
+                             text_color=plots.MUTED).pack(side="left")
+                self.summary_var = tk.StringVar(value="—")
+                self.summary_menu = ctk.CTkOptionMenu(
+                    bar, values=["—"], variable=self.summary_var,
+                    width=420, fg_color="#0d1117", button_color="#1f6feb",
+                    button_hover_color="#388bfd", text_color=plots.FG,
+                    dropdown_fg_color=plots.PANEL,
+                    dropdown_text_color=plots.FG, font=self.font_small,
+                    command=self._on_summary_changed)
+                self.summary_menu.pack(side="left", padx=(8, 0))
+                self.summary_note = ctk.CTkLabel(
+                    tab, text="", font=self.font_small, text_color=plots.MUTED,
+                    anchor="w", justify="left", wraplength=1100)
+                self.summary_note.grid(row=1, column=0, sticky="w",
+                                       padx=10, pady=(4, 2))
+                self.summary_table = DataTable(tab)
+                self.summary_table.grid(row=2, column=0, sticky="nsew",
+                                        padx=8, pady=(0, 6))
+                continue
             elif name == "Данные":
                 tab.grid_rowconfigure(1, weight=1)
                 bar = ctk.CTkFrame(tab, fg_color="transparent")
@@ -1051,6 +1076,13 @@ class App(ctk.CTk):
         self.data_file_var.set(preferred_data)
         self._refresh_data_table()
 
+        self.summary_sets = summary.available_sets(path)
+        self.summary_key_by_label = dict(self.summary_sets)
+        summary_labels = [label for label, _ in self.summary_sets]
+        self.summary_menu.configure(values=summary_labels or ["—"])
+        self.summary_var.set(summary_labels[0] if summary_labels else "—")
+        self._refresh_summary()
+
         topologies = list(self.ts_data.keys())
         self.ts_topo_menu.configure(values=topologies or ["—"])
         if topologies:
@@ -1068,23 +1100,54 @@ class App(ctk.CTk):
         self.structure_topo_var.set(preferred)
 
         selected = self.ts_topo_var.get() if topologies else None
-        summary = data.summarize_run(path, selected)
-        self._update_cards(summary)
+        run_summary = data.summarize_run(path, selected)
+        self._update_cards(run_summary)
         self.summary_label.configure(
-            text=f"Источник: {summary['source']}  ·  топология: "
-                 f"{summary['topology']}  ·  {path.name}")
+            text=f"Источник: {run_summary['source']}  ·  топология: "
+                 f"{run_summary['topology']}  ·  {path.name}")
 
         self._draw_active_tab()
 
     def _on_ts_topo_changed(self, topology: str) -> None:
         if self.run_dir is None:
             return
-        summary = data.summarize_run(self.run_dir, topology)
-        self._update_cards(summary)
+        run_summary = data.summarize_run(self.run_dir, topology)
+        self._update_cards(run_summary)
         self.summary_label.configure(
-            text=f"Источник: {summary['source']}  ·  топология: "
-                 f"{summary['topology']}  ·  {self.run_dir.name}")
+            text=f"Источник: {run_summary['source']}  ·  топология: "
+                 f"{run_summary['topology']}  ·  {self.run_dir.name}")
         self._draw_active_tab()
+
+    def _refresh_summary(self) -> None:
+        if self.summary_table is None or self.run_dir is None:
+            return
+        label = self.summary_var.get()
+        key = self.summary_key_by_label.get(label, "")
+        headers, rows, note = summary.build(self.run_dir, key)
+        self.summary_table.set_data(headers, rows)
+        if not headers:
+            self.summary_note.configure(
+                text="Для этого прогона нет сводной таблицы. "
+                     "Используйте сценарий demo или откройте другой прогон.")
+        else:
+            self.summary_note.configure(text=note)
+
+    def _on_summary_changed(self, label: str) -> None:
+        self._refresh_summary()
+
+    def _open_summary_tab(self) -> None:
+        try:
+            self.tabview.set("Сводка")
+        except Exception:
+            pass
+        self._refresh_summary()
+
+    def _open_summary(self, prefix: str) -> None:
+        for label, _ in self.summary_sets:
+            if label == prefix or label.startswith(prefix):
+                self.summary_var.set(label)
+                break
+        self._open_summary_tab()
 
     def _refresh_data_table(self) -> None:
         if self.data_table is None:
@@ -1215,6 +1278,9 @@ class App(ctk.CTk):
         try:
             name = self.tabview.get()
         except Exception:
+            return
+        if name == "Сводка":
+            self._refresh_summary()
             return
         if name == "Данные":
             self._refresh_data_table()
