@@ -19,14 +19,14 @@ python -m pip install customtkinter matplotlib pandas Pillow
 или вручную:
 
 ```powershell
-msbuild dipl.vcxproj /p:Configuration=Release /p:Platform=x64
+msbuild netsim.vcxproj /p:Configuration=Release /p:Platform=x64
 ```
 
-Появится `x64\Release\dipl.exe`. Если файл лежит в другом месте, задайте
+Появится `x64\Release\netsim.exe`. Если файл лежит в другом месте, задайте
 переменную окружения:
 
 ```powershell
-$env:NETSIM_EXE = "D:\netsim\dipl.exe"
+$env:NETSIM_EXE = "D:\netsim\netsim.exe"
 ```
 
 ## 3. Запуск GUI
@@ -60,7 +60,7 @@ python run_gui.py
 
 Кнопки внизу:
 
-- **Запустить** — собрать `config.ini`, запустить `dipl.exe`, показать
+- **Запустить** — собрать `config.ini`, запустить `netsim.exe`, показать
   прогресс и журнал;
 - **Остановить** — завершить процесс;
 - **Открыть каталог** — открыть папку прогона в Проводнике.
@@ -98,10 +98,13 @@ python run_gui.py
 - **Атаки** — сравнение targeted / random / cascading.
 - **FIFO/Triage** — переключение E_QoS / φ_w; звёздочка — значимое
   преимущество Triage (p < 0,05).
+- **Данные** — все CSV прогона в табличном виде, копирование и экспорт.
 - **Структура** — таблица метрик выбранной топологии (степени, кластеризация,
   длина пути, диаметр, ассортативность, γ) и CCDF распределения степеней.
 
-Кнопка **PNG** сохраняет текущий график.
+Кнопка **PNG** сохраняет текущий график. Кнопка **«Таблицы»** открывает
+вкладку «Данные» со всеми CSV прогона; на каждой вкладке есть кнопка
+**«Таблица»**, открывающая соответствующий файл.
 
 ## 4. Сценарии
 
@@ -143,27 +146,34 @@ python run_gui.py
 «Структура» доступна и для обычных сценариев. Подробное описание моделей —
 в [docs/05_topolologii.md](05_topolologii.md).
 
+### 4.7 Полная демонстрация
+
+Сценарий `demo` за один компактный прогон заполняет все вкладки:
+динамику, топологии, sweep, атаки, FIFO/Triage, структуру и данные.
+Это рекомендуемый способ проверить все возможности. Подробнее об именах
+прогонов и таблицах — в [docs/06_zapuski_i_dannye.md](06_zapuski_i_dannye.md).
+
 ## 5. Пакетный режим
 
 ```powershell
 # Сравнение топологий
-.\x64\Release\dipl.exe run --scenario topology `
+.\x64\Release\netsim.exe run --scenario topology `
     --topologies star,ring,full_mesh,erdos_renyi,barabasi_albert `
     --num-nodes 50 --sims 30 --T 150 --lambda 1.0 `
     --resources 200 --slots 3 --qos-class 1 `
     --out results\base --progress
 
 # Стресс по потерям
-.\x64\Release\dipl.exe run --scenario timeseries `
+.\x64\Release\netsim.exe run --scenario timeseries `
     --topology full_mesh --num-nodes 10 --sims 1 --T 20 `
     --lambda 0 --demand 90000000 --access 100000000 --core 100000000 `
     --buffer 20 --qos-class 1 --out results\loss --progress
 
 # Повтор последней конфигурации
-.\x64\Release\dipl.exe run --quick
+.\x64\Release\netsim.exe run --quick
 
 # Только структурный анализ ER/BA
-.\x64\Release\dipl.exe run --scenario structure `
+.\x64\Release\netsim.exe run --scenario structure `
     --topologies erdos_renyi,barabasi_albert `
     --num-nodes 100 --er-p 0.05 --ba-m 2 `
     --out results\structure
@@ -172,7 +182,7 @@ python run_gui.py
 Основные опции:
 
 ```text
---scenario topology|sweep|strategy|attack|timeseries|structure|all
+--scenario topology|sweep|strategy|attack|timeseries|structure|demo|all
 --config <path>          загрузить INI
 --out <dir>              каталог результатов
 --topology <name>        одна топология
@@ -228,7 +238,7 @@ PNG сохраняются в `results\base\plots\`.
 
 | Симптом | Причина | Решение |
 |---|---|---|
-| «Ядро не найдено» | не собрано `dipl.exe` | `.\build.ps1` |
+| «Ядро не найдено» | не собрано `netsim.exe` | `.\build.ps1` |
 | `E_QoS_norm = 0` при `Q = 0` | базовая сеть не проходит QoS | уменьшить нагрузку, увеличить буфер/ёмкость, сменить класс |
 | `IPLR = 0`, `Q` низка | фрагментация, а не потери | смотреть `R`, `LCC`, `φ_w` |
 | Прогон долго не завершается | большое `n_sims × топологии × sweep` | уменьшить `n_sims`/точки |

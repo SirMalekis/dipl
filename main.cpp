@@ -1,5 +1,5 @@
 /**
- main.cpp — точка входа NetSim (ВКР).
+ main.cpp — точка входа NetSim.
  Режимы:
    netsim                     — интерактивное меню
    netsim run --config f.ini  — пакетный запуск (используется GUI)
@@ -276,18 +276,44 @@ void printTopologyStructure(const std::vector<TopologyStructure>& structures) {
 // ---------------------------------------------------------------------------
 // Запуск сценариев
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Демонстрационный сценарий: компактный прогон, заполняющий все вкладки GUI
+// ---------------------------------------------------------------------------
+void applyDemoSettings(SimConfig& config) {
+    config.topologies = availableTopologies();
+    config.topology = "barabasi_albert";
+    config.n_sims = 5;
+    config.T = 60.0;
+    config.sample_points = 80;
+    config.attack_lambda = 1.0;
+    config.global_resources = 120.0;
+    config.repair_slots = 2;
+    config.qos_class = 1;
+    config.demand_per_pair = 2.0e6;
+    config.attack_strategies = {"targeted", "random", "cascading"};
+    config.resource_levels = {20.0, 80.0};
+    config.sweep_params = {"lambda", "resources"};
+    config.sweep_ranges["lambda"] = {0.5, 1.33, 2.17, 3.0};
+    config.sweep_ranges["resources"] = {20.0, 66.0, 113.0, 160.0};
+}
+
 int runScenario(SimConfig config, const std::string& scenario,
-                const std::string& out_dir, bool show_progress = false) {
+                const std::string& out_dir, bool show_progress = false,
+                bool save_config = true) {
     config.scenario = scenario;
     config.out_dir = out_dir;
     std::filesystem::create_directories(out_dir);
+
+    if (scenario == "demo") {
+        applyDemoSettings(config);
+    }
 
     std::string error;
     if (!config.validate(error)) {
         std::cerr << "Ошибка конфигурации: " << error << "\n";
         return 2;
     }
-    if (scenario != "structure") {
+    if (save_config && scenario != "structure") {
         if (!config.saveToFile(out_dir + "/config.ini", error)) {
             std::cerr << "Предупреждение: " << error << "\n";
         }
@@ -312,6 +338,22 @@ int runScenario(SimConfig config, const std::string& scenario,
     }
 
     try {
+        if (scenario == "demo") {
+            const std::vector<std::string> parts = {
+                "topology", "sweep", "strategy", "attack", "timeseries"};
+            for (size_t i = 0; i < parts.size(); ++i) {
+                std::cout << "\n>>> Демонстрация: " << parts[i] << "\n";
+                if (runScenario(config, parts[i], out_dir, show_progress,
+                                false) != 0)
+                    return 1;
+                progress((i + 1.0) / parts.size(), "demo: " + parts[i]);
+            }
+            config.scenario = "demo";
+            config.saveToFile(out_dir + "/config.ini", error);
+            progress(1.0, "демонстрация завершена");
+            return 0;
+        }
+
         if (scenario == "topology") {
             const auto comparison = runTopologyComparison(
                 config, config.topologies, config.n_sims, progress);
@@ -394,6 +436,8 @@ int runScenario(SimConfig config, const std::string& scenario,
                     return 1;
                 progress((i + 1.0) / parts.size(), "all: " + parts[i]);
             }
+            config.scenario = "all";
+            config.saveToFile(out_dir + "/config.ini", error);
         } else {
             std::cerr << "Неизвестный сценарий: " << scenario << "\n";
             return 2;
@@ -495,7 +539,7 @@ void printUsage() {
         << "  netsim selftest                 самопроверка\n"
         << "  netsim version                  версия\n\n"
         << "Опции run:\n"
-        << "  --scenario topology|sweep|strategy|attack|timeseries|structure|all\n"
+        << "  --scenario topology|sweep|strategy|attack|timeseries|structure|demo|all\n"
         << "  --config <path>                 загрузить INI\n"
         << "  --out <dir>                     каталог результатов\n"
         << "  --topology <name>               одна топология\n"
@@ -681,8 +725,8 @@ void configureAdvanced(SimConfig& cfg) {
 }
 
 int interactive() {
-    header("NetSim — модель живучести информационной инфраструктуры");
-    std::cout << "  " << kDim << "ВКР: Y.1541 + M/M/1 + дискретно-событийное ядро"
+    header("NetSim");
+    std::cout << "  " << kDim << "Y.1541 + M/M/1 + дискретно-событийное ядро"
               << kReset << "\n\n";
 
     std::cout << "  1. topology    Сравнение топологий\n"
@@ -701,10 +745,10 @@ int interactive() {
     SimConfig cfg;
     const std::map<std::string, std::string> scenarios = {
         {"1", "topology"}, {"2", "sweep"},    {"3", "strategy"},
-        {"4", "attack"},   {"5", "timeseries"}, {"6", "all"},
+        {"4", "attack"},   {"5", "timeseries"}, {"6", "all"}, {"8", "demo"},
         {"topology", "topology"}, {"sweep", "sweep"},
         {"strategy", "strategy"}, {"attack", "attack"},
-        {"timeseries", "timeseries"}, {"all", "all"}};
+        {"timeseries", "timeseries"}, {"all", "all"}, {"demo", "demo"}};
 
     auto it = scenarios.find(lower(choice));
     const std::string scenario = (it == scenarios.end()) ? "topology" : it->second;

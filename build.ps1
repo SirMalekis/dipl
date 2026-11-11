@@ -1,4 +1,4 @@
-﻿# Сборка C++-ядра NetSim.
+# Сборка C++-ядра NetSim.
 param(
     [string]$Configuration = "Release",
     [string]$Platform = "x64"
@@ -25,8 +25,8 @@ function Find-MSBuild {
 
 $msbuild = Find-MSBuild
 Write-Host "MSBuild: $msbuild"
-& $msbuild "dipl.vcxproj" "/p:Configuration=$Configuration" "/p:Platform=$Platform" /m /v:minimal
+& $msbuild "netsim.vcxproj" "/p:Configuration=$Configuration" "/p:Platform=$Platform" /m /v:minimal
 if ($LASTEXITCODE -ne 0) { throw "Сборка завершилась с кодом $LASTEXITCODE" }
 
-$exe = Join-Path $root "x64\$Configuration\dipl.exe"
+$exe = Join-Path $root "x64\$Configuration\netsim.exe"
 Write-Host "Готово: $exe"

@@ -1,12 +1,12 @@
-﻿# Полный набор экспериментов ВКР.
-# Запуск: .\scripts\run_vkr_experiments.ps1
+﻿# Полный набор экспериментов NetSim.
+# Запуск: .\scripts\run_experiments.ps1
 $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
-$exe = Join-Path $root "x64\Release\dipl.exe"
+$exe = Join-Path $root "x64\Release\netsim.exe"
 if (!(Test-Path $exe)) { throw "Сначала соберите ядро: .\build.ps1" }
 
-$base = Join-Path $root "results\vkr"
+$base = Join-Path $root "results\experiments"
 New-Item -ItemType Directory -Force $base | Out-Null
 
 $runs = @(

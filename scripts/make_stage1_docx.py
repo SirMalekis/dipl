@@ -1,4 +1,4 @@
-"""Генерация DOCX «Этап 1. Теоретическое обоснование» для ВКР."""
+"""Генерация DOCX «Теоретическое обоснование» для проекта."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "docs" / "VKR_Etap1_Teoreticheskoe_obosnovanie.docx"
+OUT = ROOT / "docs" / "Teoreticheskoe_obosnovanie.docx"
 
 FONT = "Times New Roman"
 
@@ -209,7 +209,7 @@ def main() -> None:
     p = document.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.first_line_indent = Cm(0)
-    set_run_font(p.add_run("ВЫПУСКНАЯ КВАЛИФИКАЦИОННАЯ РАБОТА"), 16, bold=True)
+    set_run_font(p.add_run("ОТЧЁТ"), 16, bold=True)
 
     p = document.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -222,8 +222,6 @@ def main() -> None:
     p = document.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.first_line_indent = Cm(0)
-    set_run_font(p.add_run("Этап 1"), 14, italic=True)
-
     for _ in range(8):
         document.add_paragraph()
 
@@ -239,7 +237,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     heading(document, "ВВЕДЕНИЕ", 1)
     para(document,
-         "Настоящий этап выпускной квалификационной работы развивает "
+         "Настоящий отчёт развивает "
          "математическую и программную модель, созданную в ходе "
          "научно-исследовательской работы (НИР). В НИР были формализованы "
          "взвешенная живучесть φ_w, топологически-ориентированное "
@@ -426,7 +424,7 @@ def main() -> None:
 
     heading(document, "3.2 QoS-эффективность", 2)
     para(document,
-         "Главная метрика этапа — нормированная глобальная эффективность с "
+         "Главная метрика — нормированная глобальная эффективность с "
          "фильтром требований Y.1541:")
     formula(document, "E_QoS(t) = 1/(N(N−1)) · Σ_{i≠j} [1/IPTD_ij(t)] · I_ij(t)", "14")
     formula(document, "E_QoS_norm(t) = min(1, E_QoS(t) / E_QoS(0))", "15")
@@ -525,7 +523,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 7. Выводы
     # ------------------------------------------------------------------
-    heading(document, "7 ВЫВОДЫ ПО ЭТАПУ", 1)
+    heading(document, "7 ВЫВОДЫ", 1)
     bullets = [
         "Проанализирована рекомендация МСЭ-Т Y.1541; формализованы классы "
         "0–7 и пороги IPTD, IPDV, IPLR, IPER. Для модели выбраны проверки "
@@ -572,7 +570,7 @@ def main() -> None:
     document.core_properties.title = (
         "Теоретическое обоснование и математическое моделирование "
         "оценки живучести гетерогенной информационной инфраструктуры")
-    document.core_properties.subject = "ВКР, этап 1"
+    document.core_properties.subject = "NetSim: теоретическое обоснование"
     document.core_properties.author = "NetSim"
 
     OUT.parent.mkdir(parents=True, exist_ok=True)

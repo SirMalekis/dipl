@@ -23,8 +23,8 @@ def find_core() -> Path | None:
     if env:
         candidates.append(Path(env))
     candidates += [
-        ROOT / "x64" / "Release" / "dipl.exe",
-        ROOT / "x64" / "Debug" / "dipl.exe",
+        ROOT / "x64" / "Release" / "netsim.exe",
+        ROOT / "x64" / "Debug" / "netsim.exe",
         ROOT / "build" / "Release" / "netsim.exe",
         ROOT / "build" / "netsim.exe",
         ROOT / "bin" / "netsim.exe",

@@ -14,6 +14,7 @@
 │  gui/core.py       поиск exe, INI, subprocess, progress      │
 │  gui/data.py       чтение CSV, сводки                        │
 │  gui/plots.py      Matplotlib: деградация, бары, sweep       │
+│  gui/table.py      таблицы, копирование и экспорт CSV        │
 └───────────────┬─────────────────────────────────────────────┘
                 │  config.ini + --progress (stdout)
 ┌───────────────▼─────────────────────────────────────────────┐
@@ -217,7 +218,7 @@ mean = area / T
 
 | Ключ | Смысл | По умолчанию |
 |---|---|---|
-| `scenario` | `topology`, `sweep`, `strategy`, `attack`, `timeseries`, `structure`, `all` | `topology` |
+| `scenario` | `topology`, `sweep`, `strategy`, `attack`, `timeseries`, `structure`, `demo`, `all` | `topology` |
 | `topologies` | список через запятую | все пять |
 | `num_nodes` | число узлов | 50 |
 | `n_sims` | число прогонов МК | 30 |
@@ -258,7 +259,7 @@ mean = area / T
 ### 7.1 Слои
 
 - `App` (наследник `CTk`) — представление и обработка событий;
-- `CoreRunner` — запуск `dipl.exe` через `subprocess.Popen`, чтение stdout в
+- `CoreRunner` — запуск `netsim.exe` через `subprocess.Popen`, чтение stdout в
   отдельном потоке, очередь событий `queue.Queue`;
 - `data` — чтение CSV в `pandas.DataFrame`, определение сценария, сводка;
 - `plots` — построение `Figure` и встраивание через `FigureCanvasTkAgg`.
@@ -269,7 +270,7 @@ mean = area / T
 кнопка «Запустить»
   → собрать и валидировать параметры
   → создать runs/<timestamp>/config.ini
-  → Popen(dipl.exe run --config ... --out ... --progress)
+  → Popen(netsim.exe run --config ... --out ... --progress)
   → поток читает stdout → queue
   → Tk-цикл (after 80 мс) обновляет прогресс и журнал
   → код 0 → загрузить CSV → карточки и вкладки
@@ -284,10 +285,11 @@ mean = area / T
 - **FIFO/Triage** — переключение метрики E_QoS / φ_w, звёздочки значимых
   точек.
 - **Структура** — таблица метрик ER/BA и CCDF распределения степеней.
+- **Данные** — все CSV прогона в виде таблицы, копирование и экспорт.
 
 ### 7.3 Отказоустойчивость
 
-- если `dipl.exe` не найден, GUI показывает путь сборки и не падает;
+- если `netsim.exe` не найден, GUI показывает путь сборки и не падает;
 - ошибка валидации параметров — диалог с конкретным ключом;
 - ошибка ядра — код возврата и журнал;
 - остановка — `terminate()` процесса;
@@ -298,7 +300,7 @@ mean = area / T
 - `tests/test_core.cpp` — 78 проверок: таблица Y.1541, формулы M/M/1,
   генераторы всех топологий, структурный анализ ER/BA, All-to-All, метрики,
   конфигурация, DES, воспроизводимость, CSV.
-- `dipl.exe selftest` — быстрая проверка на встроенных данных.
+- `netsim.exe selftest` — быстрая проверка на встроенных данных.
 - `run_gui.py --selftest` — сквозной прогон GUI: форма → ядро → CSV →
   график → снимок окна.
 

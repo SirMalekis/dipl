@@ -12,7 +12,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "docs" / "VKR_Topologii_ER_BA.docx"
+OUT = ROOT / "docs" / "Topologii_ER_BA.docx"
 FONT = "Times New Roman"
 
 
@@ -267,7 +267,7 @@ def main():
          "structure, который не запускает симуляцию, а только анализирует "
          "графы. Результаты сохраняются в topology_structure.csv и "
          "topology_degrees_<topology>.csv.")
-    formula(document, "dipl.exe run --scenario structure --topologies "
+    formula(document, "netsim.exe run --scenario structure --topologies "
                       "erdos_renyi,barabasi_albert --num-nodes 100 "
                       "--er-p 0.05 --ba-m 2 --out results\\structure")
 

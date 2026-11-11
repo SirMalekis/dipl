@@ -1,4 +1,4 @@
-"""NetSim GUI — визуальная оболочка для вычислительного ядра (ВКР)."""
+"""NetSim GUI — визуальная оболочка для вычислительного ядра."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from . import core, data, plots
+from .table import DataTable
 
 TOPO_LABELS = {
     "star": "Звезда",
@@ -42,12 +43,13 @@ TOPO_DESCRIPTIONS = {
 }
 
 SCENARIOS = [
+    ("demo", "Демонстрация (все вкладки)"),
     ("topology", "Сравнение топологий"),
     ("sweep", "Параметрический анализ"),
     ("strategy", "FIFO vs Triage"),
     ("attack", "Векторы атак"),
     ("timeseries", "Временные ряды"),
-    ("all", "Все сценарии"),
+    ("all", "Все сценарии (текущие параметры)"),
 ]
 SCENARIO_BY_LABEL = {label: key for key, label in SCENARIOS}
 LABEL_BY_SCENARIO = {key: label for key, label in SCENARIOS}
@@ -113,6 +115,19 @@ ABOUT_TEXT = """NetSim 2.0 — программный комплекс для о
 ────────────────────────────────────────────────────────────────
 Параметры → Запустить. Результаты загружаются автоматически.
 Графики можно сохранить в PNG. CSV лежат в каталоге прогона.
+
+ДЕМОНСТРАЦИЯ
+────────────────────────────────────────────────────────────────
+Сценарий «Демонстрация (все вкладки)» за один компактный прогон
+заполняет «Динамику», «Топологии», «Sweep», «Атаки»,
+«FIFO/Triage», «Структуру» и «Данные».
+
+ДАННЫЕ
+────────────────────────────────────────────────────────────────
+Вкладка «Данные» показывает любой CSV прогона в табличном виде.
+Доступны копирование в буфер обмена (TSV для Word/Excel) и
+экспорт CSV. Кнопка «Таблица» на вкладках открывает
+соответствующий файл.
 """
 
 
@@ -122,7 +137,7 @@ class App(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        self.title("NetSim — живучесть и QoS инфраструктуры (ВКР)")
+        self.title("NetSim")
         self.geometry("1360x860")
         self.minsize(1180, 760)
         self.configure(fg_color=plots.BG)
@@ -142,6 +157,8 @@ class App(ctk.CTk):
         self.structure_df = None
         self.degree_data: dict = {}
         self._runs: dict[str, Path] = {}
+        self.data_files: dict[str, Path] = {}
+        self.data_table: DataTable | None = None
         self._selftest = False
         self._selftest_screenshot: Path | None = None
 
@@ -184,10 +201,7 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(sidebar, text="NetSim", font=self.font_title,
                      text_color=plots.FG, anchor="w").pack(
-            fill="x", padx=20, pady=(22, 0))
-        ctk.CTkLabel(sidebar, text="живучесть · QoS · Монте-Карло",
-                     font=self.font_small, text_color=plots.MUTED,
-                     anchor="w").pack(fill="x", padx=20, pady=(0, 20))
+            fill="x", padx=20, pady=(22, 20))
 
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
         for key, label, icon in (
@@ -212,13 +226,13 @@ class App(ctk.CTk):
             core_text = f"Ядро: {self.core_path.name}"
             core_color = plots.C_EPHYS
         else:
-            core_text = "Ядро не найдено\nСоберите dipl.vcxproj"
+            core_text = "Ядро не найдено\nСоберите netsim.vcxproj"
             core_color = plots.C_IPTD
         self.core_status = ctk.CTkLabel(
             sidebar, text=core_text, font=self.font_small,
             text_color=core_color, anchor="w", justify="left")
         self.core_status.pack(fill="x", padx=20, pady=(0, 4))
-        ctk.CTkLabel(sidebar, text="NetSim 2.0 · ВКР · 2026",
+        ctk.CTkLabel(sidebar, text="NetSim 2.0",
                      font=self.font_small, text_color=plots.MUTED,
                      anchor="w").pack(fill="x", padx=20, pady=(0, 16))
 
@@ -548,6 +562,10 @@ class App(ctk.CTk):
     # ------------------------------------------------------------------
     def _on_scenario_changed(self, label: str) -> None:
         hints = {
+            "Демонстрация (все вкладки)": "Компактный прогон, который заполняет "
+                                           "все вкладки результатов: динамику, "
+                                           "топологии, sweep, атаки, FIFO/Triage "
+                                           "и структуру.",
             "Сравнение топологий": "Сравнение топологий по E_QoS, LCC, φ_w, "
                                    "IPTD и IPLR; попарные тесты Манна–Уитни.",
             "Параметрический анализ": "Однофакторный sweep по λ, R, μ и "
@@ -556,7 +574,9 @@ class App(ctk.CTk):
                               "уровнях ресурсов R.",
             "Векторы атак": "Сравнение целевых, случайных и каскадных атак.",
             "Временные ряды": "Одна реализация с детальным рядом метрик.",
-            "Все сценарии": "Последовательный запуск всех сценариев.",
+            "Все сценарии (текущие параметры)":
+                "Последовательный запуск всех сценариев с текущими параметрами; "
+                "может занимать много времени.",
         }
         self.scenario_hint.configure(text=hints.get(label, ""))
 
@@ -682,8 +702,8 @@ class App(ctk.CTk):
             messagebox.showerror(
                 "Ядро не найдено",
                 "Соберите C++-ядро:\n\n"
-                "  msbuild dipl.vcxproj /p:Configuration=Release /p:Platform=x64\n\n"
-                "Ожидаемый путь: x64\\Release\\dipl.exe")
+                "  msbuild netsim.vcxproj /p:Configuration=Release /p:Platform=x64\n\n"
+                "Ожидаемый путь: x64\\Release\\netsim.exe")
             return
 
         config, error = self._collect_config()
@@ -692,10 +712,12 @@ class App(ctk.CTk):
             return
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_dir = core.ROOT / "runs" / stamp
+        scenario_name = str(config.get("scenario", "run"))
+        run_name = f"{scenario_name}_{stamp}"
+        run_dir = core.ROOT / "runs" / run_name
         suffix = 1
         while run_dir.exists():
-            run_dir = core.ROOT / "runs" / f"{stamp}_{suffix}"
+            run_dir = core.ROOT / "runs" / f"{run_name}_{suffix}"
             suffix += 1
         run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -807,6 +829,11 @@ class App(ctk.CTk):
                       border_color=plots.GRID, text_color=plots.FG,
                       command=self._save_current_plot).grid(row=0, column=3,
                                                             padx=(8, 0))
+        ctk.CTkButton(top, text="Таблицы", width=100, height=30,
+                      fg_color="transparent", border_width=1,
+                      border_color=plots.GRID, text_color=plots.FG,
+                      command=self._open_data_tab).grid(row=0, column=4,
+                                                        padx=(8, 0))
 
         cards = ctk.CTkFrame(page, fg_color="transparent")
         cards.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
@@ -850,7 +877,7 @@ class App(ctk.CTk):
                           pady=(2, 12))
 
         for name in ("Динамика", "Топологии", "Sweep", "Атаки",
-                     "FIFO/Triage", "Структура"):
+                     "FIFO/Triage", "Структура", "Данные"):
             tab = self.tabview.add(name)
             tab.grid_columnconfigure(0, weight=1)
             canvas_col = 0
@@ -868,6 +895,14 @@ class App(ctk.CTk):
                     dropdown_text_color=plots.FG, font=self.font_small,
                     command=self._on_ts_topo_changed)
                 self.ts_topo_menu.pack(side="left", padx=(8, 0))
+                ctk.CTkButton(
+                    bar, text="Таблица", width=90, height=28,
+                    fg_color="transparent", border_width=1,
+                    border_color=plots.GRID, text_color=plots.FG,
+                    font=self.font_small,
+                    command=lambda: self._open_data(
+                        f"timeseries_{self.ts_topo_var.get()}.csv")).pack(
+                    side="right")
                 canvas_row = 1
             elif name == "FIFO/Triage":
                 bar = ctk.CTkFrame(tab, fg_color="transparent")
@@ -884,6 +919,31 @@ class App(ctk.CTk):
                     text_color=plots.FG, font=self.font_small,
                     command=lambda _: self._draw_active_tab()).pack(
                     side="left", padx=(8, 0))
+                ctk.CTkButton(
+                    bar, text="Таблица", width=90, height=28,
+                    fg_color="transparent", border_width=1,
+                    border_color=plots.GRID, text_color=plots.FG,
+                    font=self.font_small,
+                    command=lambda: self._open_data(
+                        "strategy_comparison.csv")).pack(side="right")
+                canvas_row = 1
+            elif name in ("Топологии", "Sweep", "Атаки"):
+                bar = ctk.CTkFrame(tab, fg_color="transparent")
+                bar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 0))
+                ctk.CTkLabel(bar, text="Результаты:", font=self.font_small,
+                             text_color=plots.MUTED).pack(side="left")
+                target = {
+                    "Топологии": "topology_comparison.csv",
+                    "Sweep": "sweep_",
+                    "Атаки": "attack_vector_analysis.csv",
+                }[name]
+                command = (self._open_sweep_data if name == "Sweep"
+                           else lambda f=target: self._open_data(f))
+                ctk.CTkButton(
+                    bar, text="Таблица", width=90, height=28,
+                    fg_color="transparent", border_width=1,
+                    border_color=plots.GRID, text_color=plots.FG,
+                    font=self.font_small, command=command).pack(side="right")
                 canvas_row = 1
             elif name == "Структура":
                 tab.grid_columnconfigure(0, weight=0)
@@ -902,6 +962,13 @@ class App(ctk.CTk):
                     dropdown_text_color=plots.FG, font=self.font_small,
                     command=self._on_structure_topo_changed)
                 self.structure_topo_menu.pack(side="left", padx=(8, 0))
+                ctk.CTkButton(
+                    bar, text="Таблица", width=90, height=28,
+                    fg_color="transparent", border_width=1,
+                    border_color=plots.GRID, text_color=plots.FG,
+                    font=self.font_small,
+                    command=lambda: self._open_data(
+                        "topology_structure.csv")).pack(side="right")
 
                 self.structure_text = ctk.CTkTextbox(
                     tab, width=370, fg_color="#0d1117",
@@ -912,6 +979,25 @@ class App(ctk.CTk):
                 self.structure_text.configure(state="disabled")
                 canvas_row = 1
                 canvas_col = 1
+            elif name == "Данные":
+                tab.grid_rowconfigure(1, weight=1)
+                bar = ctk.CTkFrame(tab, fg_color="transparent")
+                bar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 0))
+                ctk.CTkLabel(bar, text="CSV-файл:", font=self.font_small,
+                             text_color=plots.MUTED).pack(side="left")
+                self.data_file_var = tk.StringVar(value="—")
+                self.data_file_menu = ctk.CTkOptionMenu(
+                    bar, values=["—"], variable=self.data_file_var,
+                    width=420, fg_color="#0d1117", button_color="#1f6feb",
+                    button_hover_color="#388bfd", text_color=plots.FG,
+                    dropdown_fg_color=plots.PANEL,
+                    dropdown_text_color=plots.FG, font=self.font_small,
+                    command=self._on_data_file_changed)
+                self.data_file_menu.pack(side="left", padx=(8, 0))
+                self.data_table = DataTable(tab)
+                self.data_table.grid(row=1, column=0, sticky="nsew",
+                                     padx=8, pady=6)
+                continue
             else:
                 canvas_row = 0
             tab.grid_rowconfigure(canvas_row, weight=1)
@@ -953,6 +1039,18 @@ class App(ctk.CTk):
         self.structure_df = data.load_structure(path)
         self.degree_data = data.load_degrees(path)
 
+        self.data_files = {
+            csv_path.name: csv_path
+            for csv_path in sorted(path.glob("*.csv"))
+        }
+        data_names = list(self.data_files.keys())
+        self.data_file_menu.configure(values=data_names or ["—"])
+        preferred_data = ("topology_comparison.csv"
+                          if "topology_comparison.csv" in self.data_files
+                          else data_names[0] if data_names else "—")
+        self.data_file_var.set(preferred_data)
+        self._refresh_data_table()
+
         topologies = list(self.ts_data.keys())
         self.ts_topo_menu.configure(values=topologies or ["—"])
         if topologies:
@@ -987,6 +1085,37 @@ class App(ctk.CTk):
             text=f"Источник: {summary['source']}  ·  топология: "
                  f"{summary['topology']}  ·  {self.run_dir.name}")
         self._draw_active_tab()
+
+    def _refresh_data_table(self) -> None:
+        if self.data_table is None:
+            return
+        name = self.data_file_var.get()
+        path = self.data_files.get(name)
+        if path is None:
+            self.data_table.set_data([], [])
+            return
+        frame = data.read_csv(path)
+        self.data_table.set_dataframe(frame)
+
+    def _on_data_file_changed(self, name: str) -> None:
+        self._refresh_data_table()
+
+    def _open_data_tab(self) -> None:
+        try:
+            self.tabview.set("Данные")
+        except Exception:
+            pass
+        self._refresh_data_table()
+
+    def _open_data(self, filename: str) -> None:
+        if filename in self.data_files:
+            self.data_file_var.set(filename)
+        self._open_data_tab()
+
+    def _open_sweep_data(self) -> None:
+        if self.sweep_data:
+            param = next(iter(self.sweep_data))
+            self._open_data(f"sweep_{param}.csv")
 
     def _update_cards(self, summary: dict) -> None:
         metrics = summary.get("metrics", {})
@@ -1026,7 +1155,7 @@ class App(ctk.CTk):
                 "Структурный анализ для этого прогона не найден.\n\n"
                 "Он создаётся автоматически при запуске сценария "
                 "(файл topology_structure.csv) или отдельной командой:\n"
-                "dipl.exe run --scenario structure --config config.ini --out .")
+                "netsim.exe run --scenario structure --config config.ini --out .")
             plots.empty_figure(figure)
             return
 
@@ -1086,6 +1215,9 @@ class App(ctk.CTk):
         try:
             name = self.tabview.get()
         except Exception:
+            return
+        if name == "Данные":
+            self._refresh_data_table()
             return
         figure = self.figures.get(name)
         canvas = self.canvases.get(name)

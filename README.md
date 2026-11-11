@@ -1,10 +1,8 @@
-# NetSim — оценка живучести и QoS информационной инфраструктуры
+# NetSim
 
 Программный комплекс для имитационного моделирования функциональной
 устойчивости гетерогенных информационных инфраструктур с учётом требований
-качества обслуживания IP-сетей (МСЭ-Т Y.1541). Развитие научно-исследовательской
-работы: добавлены физическая модель каналов M/M/1, QoS-эффективность,
-дискретно-событийное ядро и графический интерфейс.
+качества обслуживания IP-сетей (МСЭ-Т Y.1541).
 
 ![Главное окно](docs/img/gui_timeseries_final.png)
 
@@ -28,6 +26,10 @@
   поправка Холма.
 - **GUI на CustomTkinter**: формы параметров, запуск ядра, графики Matplotlib,
   экспорт PNG, журнал выполнения.
+- **Быстрая демонстрация**: сценарий `demo` заполняет все вкладки результатов
+  примерно за минуту.
+- **Табличный просмотр**: вкладка «Данные» с копированием в буфер и экспортом
+  CSV для отчётов.
 - **CSV-отчёты** по всем сценариям и автономный `plot_results.py`.
 
 ## Быстрый старт
@@ -40,10 +42,10 @@
 ```powershell
 .\build.ps1
 # или
-msbuild dipl.vcxproj /p:Configuration=Release /p:Platform=x64
+msbuild netsim.vcxproj /p:Configuration=Release /p:Platform=x64
 ```
 
-Результат: `x64\Release\dipl.exe`.
+Результат: `x64\Release\netsim.exe`.
 
 ### 2. Запуск GUI
 
@@ -52,13 +54,17 @@ python -m pip install customtkinter matplotlib pandas
 python run_gui.py
 ```
 
-GUI сам находит `x64\Release\dipl.exe`. Если ядро лежит в другом месте,
+GUI сам находит `x64\Release\netsim.exe`. Если ядро лежит в другом месте,
 задайте переменную `NETSIM_EXE`.
 
 ### 3. Пакетный запуск
 
 ```powershell
-.\x64\Release\dipl.exe run --scenario topology `
+# Демонстрация: все вкладки за один компактный прогон
+.\x64\Release\netsim.exe run --scenario demo --out runs\demo_example --progress
+
+# Сравнение топологий
+.\x64\Release\netsim.exe run --scenario topology `
     --num-nodes 50 --sims 30 --T 150 `
     --lambda 1.0 --resources 200 --slots 3 `
     --qos-class 1 --out results\run1 --progress
@@ -80,7 +86,18 @@ python plot_results.py results\run1
 | `attack` | целевые, случайные и каскадные атаки |
 | `timeseries` | временные ряды одной реализации |
 | `structure` | только структурный анализ ER/BA (без симуляции) |
-| `all` | последовательный запуск всех сценариев |
+| `demo` | компактный прогон, заполняющий **все** вкладки GUI |
+| `all` | все сценарии с текущими параметрами |
+
+GUI создаёт прогоны с именем `runs/<сценарий>_<ГГГГММДД>_<ЧЧММСС>` —
+например, `runs/demo_20261111_121500`. Архивные эксперименты лежат в
+`results/experiments/<имя>`. Что означает каждый прогон, какие файлы он
+создаёт и какие вкладки заполняет — в
+[docs/06_zapuski_i_dannye.md](docs/06_zapuski_i_dannye.md).
+
+**Для проверки всех возможностей сразу используйте `demo`:** он заполняет
+«Динамику», «Топологии», «Sweep», «Атаки», «FIFO/Triage», «Структуру» и
+«Данные» примерно за минуту.
 
 ## Структура проекта
 
@@ -111,29 +128,30 @@ python plot_results.py results\run1
 |---|---|
 | ![Атаки](docs/img/gui_attack_final.png) | ![Стратегии](docs/img/gui_strategy_phi.png) |
 
-| Структурный анализ BA |
-|---|
-| ![Структура](docs/img/gui_structure.png) |
+| Структурный анализ BA | Табличный просмотр |
+|---|---|
+| ![Структура](docs/img/gui_structure.png) | ![Данные](docs/img/gui_data.png) |
 
 ## Тесты
 
 ```powershell
 .\tests\build_tests.ps1
 .\tests\test_core.exe
-.\x64\Release\dipl.exe selftest
+.\x64\Release\netsim.exe selftest
 python run_gui.py --selftest
 ```
 
 ## Документация
 
 - [Теоретическое обоснование](docs/01_teoriya.md)
-- [DOCX «Этап 1. Теоретическое обоснование»](docs/VKR_Etap1_Teoreticheskoe_obosnovanie.docx)
-- [PDF «Этап 1. Теоретическое обоснование»](docs/VKR_Etap1_Teoreticheskoe_obosnovanie.pdf)
+- [DOCX «Теоретическое обоснование»](docs/Teoreticheskoe_obosnovanie.docx)
+- [PDF «Теоретическое обоснование»](docs/Teoreticheskoe_obosnovanie.pdf)
 - [Архитектура](docs/02_arhitektura.md)
 - [Руководство пользователя](docs/03_rukovodstvo.md)
 - [Топологии ER и BA](docs/05_topolologii.md)
-- [DOCX «Топологии ER и BA»](docs/VKR_Topologii_ER_BA.docx)
-- [PDF «Топологии ER и BA»](docs/VKR_Topologii_ER_BA.pdf)
+- [Запуски, имена прогонов и таблицы](docs/06_zapuski_i_dannye.md)
+- [DOCX «Топологии ER и BA»](docs/Topologii_ER_BA.docx)
+- [PDF «Топологии ER и BA»](docs/Topologii_ER_BA.pdf)
 - [Результаты экспериментов](docs/04_rezultaty.md)
 
 ## Ограничения модели

@@ -375,4 +375,4 @@ tests/*.obj
 results/last_config.ini
 
 # Промежуточные каталоги MSBuild
-dipl/
+netsim/

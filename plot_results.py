@@ -1,8 +1,8 @@
 """Построение всех графиков по CSV-отчётам одного прогона.
 
 Использование:
-    python plot_results.py runs/20260101_120000
-    python plot_results.py results/vkr
+    python plot_results.py runs/demo_20260101_120000
+    python plot_results.py results/experiments
 
 Скрипт не требует GUI: используется тот же модуль оформления, что и в
 приложении CustomTkinter. Готовые PNG сохраняются в <run>/plots/.

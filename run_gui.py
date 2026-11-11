@@ -15,7 +15,7 @@ from gui.app import App
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="NetSim GUI (ВКР)")
+    parser = argparse.ArgumentParser(description="NetSim GUI")
     parser.add_argument("--selftest", action="store_true",
                         help="автоматический прогон и проверка интерфейса")
     parser.add_argument("--screenshot", type=Path, default=None,

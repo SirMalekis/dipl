@@ -227,7 +227,7 @@ r = [Σ_e j_e k_e / E − ((Σ_e (j_e+k_e))/(2E))²] /
 
 ## 6. Влияние на живучесть и QoS
 
-В базовом сценарии ВКР (`N = 50`, `λ = 1,0`, `R = 200`, класс QoS 1):
+В базовом сценарии (`N = 50`, `λ = 1,0`, `R = 200`, класс QoS 1):
 
 | Топология | E_QoS | Q | LCC | φ_w |
 |---|---:|---:|---:|---:|
@@ -270,13 +270,13 @@ E_QoS 0,066 против 0,293 при random. ER значительно усто
 
 ```powershell
 # Только структурный анализ
-.\x64\Release\dipl.exe run --scenario structure `
+.\x64\Release\netsim.exe run --scenario structure `
     --topologies erdos_renyi,barabasi_albert `
     --num-nodes 100 --er-p 0.05 --ba-m 2 `
     --out results\structure
 
 # Полный сценарий с ER/BA
-.\x64\Release\dipl.exe run --scenario topology `
+.\x64\Release\netsim.exe run --scenario topology `
     --topologies star,ring,full_mesh,erdos_renyi,barabasi_albert `
     --num-nodes 50 --sims 30 --T 150 --out results\base
 ```

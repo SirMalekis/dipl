@@ -539,7 +539,7 @@ bool SimConfig::saveToFile(const std::string& path, std::string& error) const {
         return false;
     }
 
-    file << "# Конфигурация NetSim (ВКР)\n";
+    file << "# Конфигурация NetSim\n";
     file << "scenario=" << scenario << "\n";
     file << "topology=" << topology << "\n";
     file << "topologies=" << joinStrings(topologies) << "\n";
