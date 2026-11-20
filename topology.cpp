@@ -28,9 +28,14 @@ double clamp(double v, double lo, double hi) {
 }
 
 double jitter(std::mt19937_64& rng, double base, double spread,
-              double lo = 0.01, double hi = 0.99) {
-    std::uniform_real_distribution<double> d(-spread, spread);
-    return clamp(base + d(rng), lo, hi);
+              double lo = 0.0, double hi = 1.0) {
+    // Не позволяем шуму вывести вероятность за границы и «размывать»
+    // детерминированные 0/1: для base=0 или base=1 разброс равен нулю.
+    const double bounded = std::max(lo, std::min(hi, base));
+    const double safe_spread = std::max(
+        0.0, std::min(spread, std::min(bounded - lo, hi - bounded)));
+    std::uniform_real_distribution<double> d(-safe_spread, safe_spread);
+    return clamp(bounded + d(rng), lo, hi);
 }
 
 std::string sampleType(std::mt19937_64& rng,
@@ -273,12 +278,8 @@ Graph createNetworkTopology(const TopologyParams& p) {
                 0, static_cast<int>(std::llround(prof.C_repair * cost_mult)));
             node.weight = std::max(0.0, prof.weight * weight_mult);
         } else {
-            node.P_attack = clamp(p.base_P_attack +
-                                  std::uniform_real_distribution<double>(-0.05, 0.05)(rng),
-                                  0.01, 0.99);
-            node.P_recovery = clamp(p.base_P_recovery +
-                                    std::uniform_real_distribution<double>(-0.05, 0.05)(rng),
-                                    0.01, 0.99);
+            node.P_attack = jitter(rng, p.base_P_attack, 0.05);
+            node.P_recovery = jitter(rng, p.base_P_recovery, 0.05);
             node.mu = clamp(p.base_mu +
                             std::uniform_real_distribution<double>(-0.01, 0.01)(rng),
                             0.01, 1.0);

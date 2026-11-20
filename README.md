@@ -156,6 +156,7 @@ python run_gui.py --selftest
 - [Топологии ER и BA](docs/05_topolologii.md)
 - [Запуски, имена прогонов и таблицы](docs/06_zapuski_i_dannye.md)
 - [Технический аудит](docs/07_tehnicheskiy_audit.md)
+- [Повторный технический аудит](docs/09_tekhnicheskiy_audit_v2.md)
 - [Исправление дефектов аудита](docs/08_ispravleniya.md)
 - [DOCX «Топологии ER и BA»](docs/Topologii_ER_BA.docx)
 - [PDF «Топологии ER и BA»](docs/Topologii_ER_BA.pdf)
