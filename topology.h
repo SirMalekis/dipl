@@ -29,7 +29,6 @@ struct NodeProfile {
 };
 
 extern const std::unordered_map<std::string, NodeProfile> NODE_PROFILES;
-extern const std::unordered_map<std::string, double>      DEFAULT_NODE_MIX;
 
 // ---------------------------------------------------------------------------
 // Узел графа

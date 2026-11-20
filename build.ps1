@@ -1,4 +1,4 @@
-# Сборка C++-ядра NetSim.
+﻿# Сборка C++-ядра NetSim.
 param(
     [string]$Configuration = "Release",
     [string]$Platform = "x64"

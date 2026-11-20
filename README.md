@@ -34,6 +34,18 @@
 
 ## Быстрый старт
 
+### 0. Самый простой запуск (Windows)
+
+Дважды щёлкните `start_netsim.cmd` в корне проекта. При первом запуске он
+сам соберёт `netsim.exe` (если его нет) и откроет GUI. Аргументы
+пробрасываются в GUI, например:
+
+```powershell
+start_netsim.cmd --selftest
+start_netsim.cmd --open-run results\experiments\strategy --tab "FIFO/Triage"
+start_netsim.cmd --rebuild
+```
+
 ### 1. Сборка C++-ядра
 
 Требуется Visual Studio 2026 (toolset v145) с компонентом «Разработка
@@ -102,6 +114,7 @@ GUI создаёт прогоны с именем `runs/<сценарий>_<ГГ
 ## Структура проекта
 
 ```
+├── start_netsim.cmd    one-click launcher (build + GUI)
 ├── topology.h/.cpp      направленный граф и генераторы топологий
 ├── topology_metrics.h/.cpp  структурный анализ ER/BA
 ├── qos.h/.cpp           классы Y.1541, M/M/1(K), проверка путей
@@ -155,6 +168,7 @@ python run_gui.py --selftest
 - [Руководство пользователя](docs/03_rukovodstvo.md)
 - [Топологии ER и BA](docs/05_topolologii.md)
 - [Запуски, имена прогонов и таблицы](docs/06_zapuski_i_dannye.md)
+- [Карта кода и упрощённый запуск](docs/10_karta_koda_i_zapusk.md)
 - [Технический аудит](docs/07_tehnicheskiy_audit.md)
 - [Повторный технический аудит](docs/09_tekhnicheskiy_audit_v2.md)
 - [Исправление дефектов аудита](docs/08_ispravleniya.md)

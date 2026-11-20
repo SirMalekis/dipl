@@ -15,12 +15,6 @@ const std::unordered_map<std::string, NodeProfile> NODE_PROFILES = {
     {"host",   {0.70, 0.75, 0.20, 1,  1.0}},
 };
 
-const std::unordered_map<std::string, double> DEFAULT_NODE_MIX = {
-    {"server", 0.15},
-    {"switch", 0.20},
-    {"host",   0.65},
-};
-
 namespace {
 
 double clamp(double v, double lo, double hi) {
@@ -36,22 +30,6 @@ double jitter(std::mt19937_64& rng, double base, double spread,
         0.0, std::min(spread, std::min(bounded - lo, hi - bounded)));
     std::uniform_real_distribution<double> d(-safe_spread, safe_spread);
     return clamp(bounded + d(rng), lo, hi);
-}
-
-std::string sampleType(std::mt19937_64& rng,
-                       const std::unordered_map<std::string, double>& mix) {
-    // Фиксированный порядок обхода обеспечивает воспроизводимость.
-    static const char* order[] = {"server", "switch", "host"};
-    std::uniform_real_distribution<double> u(0.0, 1.0);
-    const double r = u(rng);
-    double cum = 0.0;
-    for (const char* type : order) {
-        auto it = mix.find(type);
-        if (it == mix.end()) continue;
-        cum += it->second;
-        if (r <= cum) return type;
-    }
-    return "host";
 }
 
 // Связные компоненты (для гарантии связности ER-графа).

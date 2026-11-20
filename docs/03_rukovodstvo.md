@@ -36,6 +36,12 @@ $env:NETSIM_EXE = "D:\netsim\netsim.exe"
 python run_gui.py
 ```
 
+Самый простой вариант в Windows — дважды щёлкнуть `start_netsim.cmd`:
+launcher сам соберёт ядро при необходимости и откроет GUI. Аргументы
+пробрасываются в `run_gui.py` (`--selftest`, `--open-run`, `--tab`);
+`--rebuild` заставляет пересобрать ядро. Подробная карта кода и
+launcher-а — в [docs/10_karta_koda_i_zapusk.md](10_karta_koda_i_zapusk.md).
+
 Окно состоит из бокового меню и трёх страниц.
 
 ### 3.1 Страница «Параметры»

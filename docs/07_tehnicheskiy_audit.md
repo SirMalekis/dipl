@@ -239,7 +239,7 @@ struct Graph {
 **уникальные неориентированные рёбра**; для звезды это 98 дуг против 49 рёбер
 в `topology_structure.csv`.
 
-`NodeProfile`/`DEFAULT_NODE_MIX` (`topology.cpp:12–22`):
+`NodeProfile` (`topology.cpp`):
 
 | Тип | P_attack | P_recovery | μ | C_repair | weight | Доля в миксе |
 |---|---:|---:|---:|---:|---:|---:|

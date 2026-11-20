@@ -1,4 +1,4 @@
-# Быстрый smoke-тест CLI: сценарии без --progress не должны падать.
+﻿# Быстрый smoke-тест CLI: сценарии без --progress не должны падать.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
