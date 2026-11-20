@@ -285,11 +285,30 @@ void applyDemoSettings(SimConfig& config) {
     config.n_sims = 5;
     config.T = 60.0;
     config.sample_points = 80;
+    config.seed = 42;
     config.attack_lambda = 1.0;
+    config.attack_strategy = "targeted";
+    config.base_P_attack = 0.60;
     config.global_resources = 120.0;
+    config.gatekeeper = "fifo";
     config.repair_slots = 2;
+    config.base_P_recovery = 0.80;
+    config.base_mu = 0.20;
+    config.base_C_repair = 1;
+    config.base_weight = 1.0;
+    config.heterogeneous = true;
     config.qos_class = 1;
     config.demand_per_pair = 2.0e6;
+    config.buffer_packets = 100;
+    config.access_capacity = 1.0e9;
+    config.core_capacity = 10.0e9;
+    config.base_latency = 0.002;
+    config.latency_jitter = 0.001;
+    config.er_p = 0.10;
+    config.ba_m = 2;
+    config.traffic_iterations = 3;
+    config.hop_penalty = 0.005;
+    config.preserve_total_demand = true;
     config.attack_strategies = {"targeted", "random", "cascading"};
     config.resource_levels = {20.0, 80.0};
     config.sweep_params = {"lambda", "resources"};
@@ -329,7 +348,9 @@ int runScenario(SimConfig config, const std::string& scenario,
     }
 
     const ProgressFn progress =
-        show_progress ? ProgressFn(progressPrinter) : ProgressFn{};
+        show_progress
+            ? ProgressFn(progressPrinter)
+            : ProgressFn([](double, const std::string&) {});
 
     if (scenario == "structure") {
         printTopologyStructure(structures);
@@ -388,8 +409,8 @@ int runScenario(SimConfig config, const std::string& scenario,
                     data[param][topo] = runParameterSweep(
                         config, param, range_it->second, topo, config.n_sims,
                         [&, offset, total](double f, const std::string& stage) {
-                            progressPrinter((offset + f) / total,
-                                            param + " / " + topo + ": " + stage);
+                            progress((offset + f) / total,
+                                     param + " / " + topo + ": " + stage);
                         });
                     ++done;
                 }
@@ -408,6 +429,21 @@ int runScenario(SimConfig config, const std::string& scenario,
                 config.n_sims, progress);
             exportAttackVectorAnalysis(results,
                                        out_dir + "/attack_vector_analysis.csv");
+            std::map<std::string, SigMap> significance;
+            for (const auto& topo : config.topologies) {
+                std::map<std::string, std::vector<double>> samples;
+                for (const auto& strategy : config.attack_strategies) {
+                    const auto strategy_it = results.find(strategy);
+                    if (strategy_it == results.end()) continue;
+                    const auto topo_it = strategy_it->second.find(topo);
+                    if (topo_it == strategy_it->second.end()) continue;
+                    samples[strategy] = topo_it->second.eqos_samples;
+                }
+                if (samples.size() >= 2)
+                    significance[topo] = pairwiseSignificance(samples);
+            }
+            exportAttackSignificance(significance,
+                                     out_dir + "/attack_significance.csv");
         } else if (scenario == "timeseries") {
             const auto& topos = config.topologies.empty()
                                     ? std::vector<std::string>{config.topology}
@@ -667,6 +703,10 @@ int runCli(int argc, char** argv) {
     if (!config.validate(error)) {
         std::cerr << "Ошибка конфигурации: " << error << "\n";
         return 2;
+    }
+
+    if (config.scenario == "demo") {
+        applyDemoSettings(config);
     }
 
     if (!progress) {

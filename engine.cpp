@@ -97,11 +97,16 @@ SimResult runSimulation(const Graph& graph, const SimConfig& config) {
         events.push(Event{time, type, node, next_seq++});
     };
 
-    // Выбор узла из очереди ожидания.
-    auto selectWaiting = [&]() -> int {
+    // Выбор узла из очереди ожидания с учётом доступных ресурсов.
+    // Узел, стоимость которого превышает остаток, не блокирует более
+    // дешёвые ремонты (иначе возникает head-of-line blocking).
+    auto selectWaiting = [&](double available) -> int {
         int best = -1;
         for (int node : waiting) {
             if (in_repair[node]) continue;
+            if (static_cast<double>(g.nodes[node].C_repair) >
+                available + kEps)
+                continue;
             if (best < 0) {
                 best = node;
                 continue;
@@ -128,8 +133,14 @@ SimResult runSimulation(const Graph& graph, const SimConfig& config) {
     std::function<void(double)> dispatch = [&](double now) {
         if (config.repair_slots <= 0) return;
         while (used_slots < config.repair_slots) {
-            const int node = selectWaiting();
-            if (node < 0) break;
+            const int node = selectWaiting(resources);
+            if (node < 0) {
+                const bool any_waiting = std::any_of(
+                    waiting.begin(), waiting.end(),
+                    [&](int candidate) { return !in_repair[candidate]; });
+                if (any_waiting) resource_exhausted = true;
+                break;
+            }
 
             Node& nd = g.nodes[node];
             const double cost = static_cast<double>(nd.C_repair);

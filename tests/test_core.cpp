@@ -203,6 +203,36 @@ int main() {
               "BA: средняя степень близка к 2m");
     }
 
+    // Гетерогенные базовые параметры должны масштабировать профили,
+    // а не игнорироваться.
+    {
+        TopologyParams base;
+        base.topology = "erdos_renyi";
+        base.num_nodes = 30;
+        base.seed = 7;
+        base.heterogeneous = true;
+        base.base_P_recovery = 0.80;
+        base.base_C_repair = 1;
+        base.base_weight = 1.0;
+
+        TopologyParams scaled = base;
+        scaled.base_P_recovery = 0.40;
+        scaled.base_C_repair = 2;
+        scaled.base_weight = 2.0;
+
+        const Graph normal = createNetworkTopology(base);
+        const Graph modified = createNetworkTopology(scaled);
+        check(modified.nodes[0].P_recovery <
+                  normal.nodes[0].P_recovery,
+              "Гетерогенность: base_P_recovery применяется");
+        check(modified.nodes[0].C_repair ==
+                  2 * normal.nodes[0].C_repair,
+              "Гетерогенность: base_C_repair масштабирует стоимость");
+        checkNear(modified.nodes[0].weight,
+                  2.0 * normal.nodes[0].weight, 1e-12,
+                  "Гетерогенность: base_weight масштабирует вес");
+    }
+
     // ---------------------------------------------------------------------
     // Трафик и метрики
     // ---------------------------------------------------------------------
@@ -277,6 +307,8 @@ int main() {
         computeMetrics(mesh, heavy_assignment.routing, loss_context, 0.0);
     check(loss_metrics.iplr_mean > 1.0e-3,
           "Затор: IPLR превышает порог 10⁻³");
+    check(loss_metrics.e_phys_norm > 0.0,
+          "Затор: E_phys > 0 при связной сети");
     check(loss_metrics.e_qos_norm == 0.0,
           "Затор: E_QoS_norm = 0 при полном нарушении SLA");
 

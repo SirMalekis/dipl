@@ -68,6 +68,7 @@ runs/topology_20261111_122000
 | `topology_significance.csv` | попарные тесты Манна–Уитни, поправка Холма | Топологии |
 | `sweep_<param>.csv` | метрики от λ, R, μ, P_attack или трафика | Sweep |
 | `attack_vector_analysis.csv` | targeted / random / cascading | Атаки |
+| `attack_significance.csv` | попарные U-тесты стратегий по E_QoS | Атаки |
 | `strategy_comparison.csv` | FIFO/Triage, p-значения, исчерпание ресурсов | FIFO/Triage |
 | `topology_structure.csv` | степени, кластеризация, L, D, r, γ | Структура |
 | `topology_degrees_<topo>.csv` | гистограмма степеней | Структура |

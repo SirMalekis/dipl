@@ -23,7 +23,7 @@ def main() -> int:
     parser.add_argument("--open-run", type=Path, default=None,
                         help="открыть готовый каталог прогона")
     parser.add_argument("--tab", default=None,
-                        help="вкладка результатов: Динамика, Топологии, Sweep, Атаки, FIFO/Triage")
+                        help="вкладка результатов: Динамика, Топологии, Sweep, Атаки, FIFO/Triage, Структура, Сводка, Данные")
     args = parser.parse_args()
 
     app = App()

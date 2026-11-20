@@ -118,6 +118,12 @@ def run_label(path: Path) -> str:
     return f"{stamp}  ·  {scenario}{suffix}"
 
 
+def _average(frame: pd.DataFrame, column: str) -> float:
+    if frame is None or column not in frame.columns:
+        return 0.0
+    return float(frame[column].mean())
+
+
 def summarize_run(run_dir: Path, topology: str | None = None) -> dict:
     """Возвращает карточки метрик для выбранного прогона."""
     summary: dict = {"source": "—", "topology": "—", "metrics": {}}
@@ -156,61 +162,71 @@ def summarize_run(run_dir: Path, topology: str | None = None) -> dict:
 
     attack = load_attack(run_dir)
     if attack is not None and not attack.empty:
-        row = attack.iloc[0]
         summary.update(
-            source="attack",
-            topology=str(row.get("topology", "—")),
+            source="attack (среднее по векторам и топологиям)",
+            topology="—",
             metrics={
-                "e_qos_norm": float(row.get("eff_qos_mean", 0.0)),
-                "qos_ratio": float(row.get("qos_mean", 0.0)),
-                "lcc": float(row.get("lcc_mean", 0.0)),
-                "phi_w": float(row.get("phi_mean", 0.0)),
-                "iptd_mean_ms": float(row.get("iptd_mean_ms", 0.0)),
-                "iplr_mean": float(row.get("iplr_mean", 0.0)),
-                "e_phys_norm": float(row.get("eff_mean", 0.0)),
+                "e_qos_norm": _average(attack, "eff_qos_mean"),
+                "qos_ratio": _average(attack, "qos_mean"),
+                "lcc": _average(attack, "lcc_mean"),
+                "phi_w": _average(attack, "phi_mean"),
+                "iptd_mean_ms": _average(attack, "iptd_mean_ms"),
+                "iplr_mean": _average(attack, "iplr_mean"),
+                "e_phys_norm": _average(attack, "eff_mean"),
             },
         )
         return summary
 
     strategy = load_strategy(run_dir)
     if strategy is not None and not strategy.empty:
-        row = strategy.sort_values("eff_qos_mean", ascending=False).iloc[0]
         summary.update(
-            source="strategy",
-            topology=str(row.get("topology", "—")),
+            source="strategy (среднее FIFO/Triage)",
+            topology="—",
             metrics={
-                "e_qos_norm": float(row.get("eff_qos_mean", 0.0)),
-                "qos_ratio": float(row.get("qos_mean", 0.0)),
-                "lcc": float(row.get("lcc_mean", 0.0)),
-                "phi_w": float(row.get("phi_mean", 0.0)),
-                "iptd_mean_ms": float(row.get("iptd_mean_ms", 0.0)),
-                "iplr_mean": float(row.get("iplr_mean", 0.0)),
-                "e_phys_norm": float(row.get("eff_mean", 0.0)),
+                "e_qos_norm": _average(strategy, "eff_qos_mean"),
+                "qos_ratio": _average(strategy, "qos_mean"),
+                "lcc": _average(strategy, "lcc_mean"),
+                "phi_w": _average(strategy, "phi_mean"),
+                "iptd_mean_ms": _average(strategy, "iptd_mean_ms"),
+                "iplr_mean": _average(strategy, "iplr_mean"),
+                "e_phys_norm": _average(strategy, "eff_mean"),
             },
         )
         return summary
 
     sweep = load_sweep(run_dir)
     if sweep:
-        frame = next(iter(sweep.values()))
-        row = frame.iloc[-1]
-        columns = {column: row[column] for column in frame.columns}
-        topology = "—"
-        for column in frame.columns:
-            if column.endswith("_eff_qos_mean"):
-                topology = column[: -len("_eff_qos_mean")]
-                break
+        frames = list(sweep.values())
+        values: dict[str, list[float]] = {}
+        for frame in frames:
+            for column in frame.columns:
+                if column == "x_value":
+                    continue
+                if column.endswith("_eff_qos_mean") or \
+                        column.endswith("_qos_mean") or \
+                        column.endswith("_lcc_mean") or \
+                        column.endswith("_phi_mean") or \
+                        column.endswith("_iptd_mean") or \
+                        column.endswith("_iplr_mean") or \
+                        column.endswith("_eff_mean"):
+                    values.setdefault(column, []).extend(
+                        pd.to_numeric(frame[column], errors="coerce")
+                        .dropna().tolist())
+        def sweep_mean(suffix: str) -> float:
+            selected = [number for column, numbers in values.items()
+                        if column.endswith(suffix) for number in numbers]
+            return float(sum(selected) / len(selected)) if selected else 0.0
         summary.update(
-            source="sweep",
-            topology=topology,
+            source="sweep (среднее по точкам и топологиям)",
+            topology="—",
             metrics={
-                "e_qos_norm": float(columns.get(f"{topology}_eff_qos_mean", 0.0)),
-                "qos_ratio": float(columns.get(f"{topology}_qos_mean", 0.0)),
-                "lcc": float(columns.get(f"{topology}_lcc_mean", 0.0)),
-                "phi_w": float(columns.get(f"{topology}_phi_mean", 0.0)),
-                "iptd_mean_ms": float(columns.get(f"{topology}_iptd_mean", 0.0)),
-                "iplr_mean": float(columns.get(f"{topology}_iplr_mean", 0.0)),
-                "e_phys_norm": float(columns.get(f"{topology}_eff_mean", 0.0)),
+                "e_qos_norm": sweep_mean("_eff_qos_mean"),
+                "qos_ratio": sweep_mean("_qos_mean"),
+                "lcc": sweep_mean("_lcc_mean"),
+                "phi_w": sweep_mean("_phi_mean"),
+                "iptd_mean_ms": sweep_mean("_iptd_mean"),
+                "iplr_mean": sweep_mean("_iplr_mean"),
+                "e_phys_norm": sweep_mean("_eff_mean"),
             },
         )
         return summary

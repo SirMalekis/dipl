@@ -1345,7 +1345,7 @@ class App(ctk.CTk):
             title="Сохранить график",
             defaultextension=".png",
             filetypes=[("PNG", "*.png"), ("PDF", "*.pdf")],
-            initialfile=f"netnsim_{name.lower().replace('/', '_')}.png")
+            initialfile=f"netsim_{name.lower().replace('/', '_')}.png")
         if path:
             figure.savefig(path, dpi=180, facecolor=figure.get_facecolor())
             self.status_var.set("График сохранён: " + path)

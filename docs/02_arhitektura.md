@@ -246,6 +246,7 @@ mean = area / T
 | `sweep_<param>.csv` | зависимости метрик от λ, R, μ, P_attack |
 | `strategy_comparison.csv` | FIFO/Triage, значимость по E_QoS и φ_w |
 | `attack_vector_analysis.csv` | векторы атак × топологии |
+| `attack_significance.csv` | попарные U-тесты E_QoS: стратегия × стратегия |
 | `run_meta_<topo>.csv` | E0, число атак, ремонтов, очередь |
 | `topology_structure.csv` | структурные метрики всех топологий |
 | `topology_degrees_<topo>.csv` | гистограмма степеней |
@@ -269,7 +270,7 @@ mean = area / T
 ```text
 кнопка «Запустить»
   → собрать и валидировать параметры
-  → создать runs/<timestamp>/config.ini
+  → создать runs/<scenario>_<timestamp>/config.ini
   → Popen(netsim.exe run --config ... --out ... --progress)
   → поток читает stdout → queue
   → Tk-цикл (after 80 мс) обновляет прогресс и журнал
@@ -298,9 +299,10 @@ mean = area / T
 
 ## 8. Тестирование
 
-- `tests/test_core.cpp` — 78 проверок: таблица Y.1541, формулы M/M/1,
+- `tests/test_core.cpp` — 82 проверки: таблица Y.1541, формулы M/M/1,
   генераторы всех топологий, структурный анализ ER/BA, All-to-All, метрики,
   конфигурация, DES, воспроизводимость, CSV.
+- `tests/cli_smoke.ps1` — CLI без `--progress`, `selftest`.
 - `netsim.exe selftest` — быстрая проверка на встроенных данных.
 - `run_gui.py --selftest` — сквозной прогон GUI: форма → ядро → CSV →
   график → снимок окна.

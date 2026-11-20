@@ -1,9 +1,16 @@
 # Технический аудит программного комплекса NetSim
 
-**Версия ПО:** `2.0.0` (`main.cpp:41`)  
-**Аудит выполнен по состоянию репозитория:** commit `58f8db0`  
-**Рабочий каталог:** `D:\ddipl`  
+**Версия ПО:** `2.0.0` (`main.cpp:41`)
+**Аудит выполнен по состоянию репозитория:** commit `58f8db0`
+**Рабочий каталог:** `D:\ddipl`
 **Предмет:** C++-ядро, Python/CustomTkinter GUI, документация `docs/`, результаты `results/experiments/`.
+
+> **Статус на 20.11.2026.** Это снимок аудита до исправлений. Критические
+> дефекты (пустой `ProgressFn`, гетерогенные параметры, head-of-line,
+> статистика, демо, документация) исправлены; ход и проверки — в
+> [docs/08_ispravleniya.md](08_ispravleniya.md). Актуальные числовые
+> результаты — в [docs/04_rezultaty.md](04_rezultaty.md). Числа ниже
+> относятся к состоянию `58f8db0` и не являются текущими.
 
 Аудит выполнен чтением исходников, конфигураций, CSV и документации, а также
 контрольными запусками `netsim.exe selftest`, `tests/test_core.exe` и
@@ -29,7 +36,7 @@
    300 × 5 точках `base_timeseries` разность `e_phys_norm − e_qos_norm`
    равна 0. В `base_topology` `eff_mean == eff_qos_mean` для BA, full_mesh,
    ring и star; у ER есть малое различие: 0,406025 против 0,405890
-   (1,35·10⁻⁴). Причина — в базовой временной серии все достижимые пути
+   (1,36·10⁻⁴). Причина — в базовой временной серии все достижимые пути
    проходят класс 1 (`qos_reachable_ratio = 1`), поэтому QoS-фильтр не
    отсекает ни одной достижимой пары. В 30-прогонном сравнении ER
    небольшое число пар уже не проходит фильтр, но эффект остаётся
@@ -73,7 +80,7 @@ D:\ddipl
 ├── netsim.vcxproj            MSVC-проект, C++20, Win32/x64, Debug/Release
 ├── netsim.slnx               решение Visual Studio
 ├── tests/build_tests.ps1     сборка тестов через cl /std:c++20
-├── tests/test_core.cpp       78 проверок ядра
+├── tests/test_core.cpp       82 проверки ядра
 ├── run_gui.py                точка входа GUI, --selftest/--open-run/--tab
 ├── plot_results.py           автономное построение PNG по CSV
 ├── gui/
@@ -119,7 +126,7 @@ D:\ddipl
   `std::exponential_distribution` и т. д.).
 - Тесты собираются отдельно:
   `cl /nologo /std:c++20 /EHsc /O2 /I. ... /Fe:tests\test_core.exe`.
-  Заявлено и подтверждено **78 проверок, 0 провалов**.
+  Заявлено и подтверждено **82 проверки, 0 провалов**.
 - **Несоответствие:** README/руководство допускают Visual Studio 2022,
   но проект жёстко задаёт toolset `v145` (VS 2026). Для VS 2022 нужен
   `v143` или перенастройка toolset.
@@ -868,7 +875,7 @@ R=120, slots=2, QoS=1, demand=2 Мбит/с, 5 топологий, sweep λ
 Дополнительно: `exhaustion_rate` = 0 для всех, кроме ER (0,333333);
 `baseline_qos_rate=1` для всех. `eff_mean == eff_qos_mean` для BA,
 full_mesh, ring и star; у ER `eff_mean=0,406025`, `eff_qos_mean=0,405890`
-(разность 1,35·10⁻⁴).
+(разность 1,36·10⁻⁴).
 
 ### 7.3 Стресс-сценарий
 
@@ -1090,7 +1097,7 @@ full 7,023411/11,036789; ER 6,020067/9,0301; BA 2,006689/6,020067
 
 ### 8.1 Критические
 
-1. **Пустой `ProgressFn` при CLI без `--progress`.**
+1. **[исправлено]** **Пустой `ProgressFn` при CLI без `--progress`.**
    - `main.cpp:331–332`: `ProgressFn progress = show_progress ? ... : ProgressFn{}`.
    - `main.cpp:336`, `349`, `353`, `450` вызывают `progress(...)`
      без проверки на пустоту.
@@ -1107,7 +1114,7 @@ full 7,023411/11,036789; ER 6,020067/9,0301; BA 2,006689/6,020067
    - Исправление: `if (progress) progress(...)` либо всегда назначать
      no-op lambda.
 
-2. **Игнорирование `base_P_recovery`, `base_C_repair`, `base_weight`
+2. **[исправлено]** **Игнорирование `base_P_recovery`, `base_C_repair`, `base_weight`
    в гетерогенном режиме.**
    - `topology.cpp:258–266` берёт `P_recovery`, `C_repair`, `weight`
      из `NODE_PROFILES`; `p.base_*` используются только в `else`
@@ -1124,7 +1131,7 @@ full 7,023411/11,036789; ER 6,020067/9,0301; BA 2,006689/6,020067
      `e_phys_norm − e_qos_norm = 0` (проверено).
    - В `base_topology` `eff_mean == eff_qos_mean` для BA, full_mesh,
      ring и star; у ER `0,406025` против `0,405890` (разность
-     1,35·10⁻⁴). В `base_timeseries` `qos_reachable_ratio = 1` для
+     1,36·10⁻⁴). В `base_timeseries` `qos_reachable_ratio = 1` для
      ring/full_mesh/ER, а у star/BA равен 0 только при отсутствии
      достижимых пар.
    - Причина: в базовой временной серии все достижимые пути проходят
@@ -1150,35 +1157,35 @@ full 7,023411/11,036789; ER 6,020067/9,0301; BA 2,006689/6,020067
    не по нагрузке.
 7. **Нет стратегий восстановления кроме FIFO/Triage.** Нет QoS-aware,
    centrality-aware, load-aware; Triage — статический вес.
-8. **Head-of-line блокировка ресурсов.** `dispatch` (`engine.cpp:134–139`)
+8. **[исправлено]** **Head-of-line блокировка ресурсов.** `dispatch` (`engine.cpp:134–139`)
    при нехватке ресурсов на выбранный узел делает `break`, не пытаясь
    выбрать более дешёвый узел. Это искажает `resource_exhausted` и
    результаты strategy.
-9. **`hop_penalty` на ребро, а не на промежуточный узел.** Код
+9. **[исправлено документально]** **`hop_penalty` на ребро, а не на промежуточный узел.** Код
    `candidate = dist[u] + eq.delay_s + hop_penalty` добавляет `h` на
    каждом ребре; документация говорит о промежуточных узлах.
 10. **Star/ring/full_mesh используют только core_capacity.**
     `access_capacity` для них не влияет; GUI-параметр «Доступ» меняет
     только ER/BA.
-11. **`tCritical` игнорирует `alpha`.** `(void)alpha`; всегда 95 %.
+11. **[исправлено]** **`tCritical` игнорирует `alpha`.** `(void)alpha`; всегда 95 %.
     `confidenceInterval(alpha)` не может построить 90/99 %.
-12. **U-критерий без поправки на связи.** `mannWhitneyU` считает ties
+12. **[исправлено]** **U-критерий без поправки на связи.** `mannWhitneyU` считает ties
     как 0,5 в U, но std без tie correction; при n=20/30 и большом числе
     равных значений p приблизительны.
-13. **Strategy p-values без Холма.** `runStrategyComparison` сравнивает
+13. **[исправлено]** **Strategy p-values без Холма.** `runStrategyComparison` сравнивает
     FIFO/Triage для каждого R отдельно, `p_holm=p_raw`; 20 сравнений
     не корректируются. Attack — без тестов.
-14. **Нет `requirements.txt`/фиксации версий.** README перечисляет
+14. **[исправлено]** **Нет `requirements.txt`/фиксации версий.** README перечисляет
     пакеты, но не версии; Python 3.14 + pandas 3.0 + customtkinter 6.0
     могут быть несовместимы с Python 3.11 из руководства.
-15. **Toolset `v145` vs README «VS 2022/2026».** VS 2022 не имеет v145;
+15. **[исправлено документально]** **Toolset `v145` vs README «VS 2022/2026».** VS 2022 не имеет v145;
     проект не соберётся без перенастройки.
 
 ### 8.3 Средние
 
-16. `exportTopologyComparison`/`exportParameterSweep` пишут `wsurv_mean`
-    и `wsurv_ci`, но значения **дублируют** `phi_w_mean`/`phi_w_ci`;
-    отдельной метрики wsurv нет (см. `csv_export.cpp:99–100, 172–173`).
+16. **[исправлено]** `wsurv_mean`/`wsurv_ci` удалены из
+    `topology_comparison.csv` и `sweep_*.csv`: они дублировали
+    `phi_w_mean`/`phi_w_ci`.
 17. `Graph.num_edges` — directed arcs; `TopologyStructure.num_edges` —
     unique undirected; в CSV `edges` не совпадает с `Graph.num_edges`
     (star 49 vs 98). Нужна явная пометка.
@@ -1188,28 +1195,27 @@ full 7,023411/11,036789; ER 6,020067/9,0301; BA 2,006689/6,020067
 19. `n_servers=15 %`, `n_switches=20 %` и ранжирование по степени
     приводит к тому, что в star 6 из 7 «серверов» — листья; это
     не соответствует интуиции «сервер = центр». Влияет на weights/Triage.
-20. `demo` не задаёт `access/core/buffer/base_latency/heterogeneous/
+20. **[исправлено]** `demo` не задаёт `access/core/buffer/base_latency/heterogeneous/
     gatekeeper`; результаты зависят от текущих параметров GUI и не
     воспроизводимы как эталон.
-21. `data.summarize_run` для attack берёт первую строку CSV
+21. **[исправлено]** `data.summarize_run` для attack берёт первую строку CSV
     (`cascading/BA` при алфавитном порядке), для strategy — лучшую
     строку, для sweep — последнюю точку; карточки могут не отражать
     выбранный сценарий.
-22. `docs/01` сохраняет «НИР» (3 места), хотя прежний ребрендинг
+22. **[исправлено]** `docs/01` сохраняет «НИР» (3 места), хотя прежний ребрендинг
     требовал убрать подобные упоминания.
-23. `docs/02` обещает `runs/<timestamp>`, код — `runs/<scenario>_<timestamp>`.
-24. `docs/03` обещает «Таблицы» → «Данные» и «Таблица» → CSV; код —
+23. **[исправлено]** `docs/02` обещает `runs/<timestamp>`, код — `runs/<scenario>_<timestamp>`.
+24. **[исправлено]** `docs/03` обещает «Таблицы» → «Данные» и «Таблица» → CSV; код —
     «Сводка». `run_gui.py --tab` help не перечисляет «Структура/Сводка/Данные».
-25. `results/` содержит устаревшие `topology_comparison.csv` (старая
-    схема: `lcc_mean, eff_mean, wsurv_mean`) и `plot_topology.png`;
-    они не соответствуют текущим CSV и могут запутать.
+25. **[исправлено]** устаревшие `results/topology_comparison.csv`
+    и `results/plot_topology.png` удалены.
 26. `results/last_config.ini` и `runs/` — рабочие артефакты; `runs/`
     игнорируется, но `last_config` может содержать сценарий demo с
     topology star и вводить в заблуждение при `--quick`.
 
 ### 8.4 Низкие/косметические
 
-27. `gui/app.py:1348` `initialfile=f"netnsim_..."` — опечатка `netnsim`.
+27. **[исправлено]** `gui/app.py:1348` `initialfile=f"netnsim_..."` — опечатка `netnsim`.
 28. `docs/03` говорит «Окно состоит из трёх страниц», но у результатов
     8 вкладок; это не ошибка, но терминология «страницы/вкладки»
     смешана.
@@ -1271,10 +1277,9 @@ eff_mean,eff_ci,eff_qos_mean,eff_qos_ci,
 qos_ratio_mean,qos_ratio_ci,iptd_mean_ms,iptd_ci,
 iplr_mean,iplr_ci,ipdv_mean_ms,ipdv_ci,
 queue_mean,queue_ci,exhaustion_rate,baseline_qos_rate,
-wsurv_mean,wsurv_ci
 ```
 
-`wsurv_*` — дубликат `phi_w_*` (см. дефект 16).
+`wsurv_*` удалены из текущей схемы (дефект 16 исправлен).
 
 ### 10.3 `topology_significance.csv`
 
@@ -1293,8 +1298,7 @@ metric,topology_a,topology_b,U,p_raw,p_holm,significant,direction
 <topo>_eff_qos_mean,<topo>_eff_qos_ci,
 <topo>_qos_mean,<topo>_qos_ci,
 <topo>_iptd_mean,<topo>_iptd_ci,
-<topo>_iplr_mean,<topo>_iplr_ci,
-<topo>_wsurv_mean,<topo>_wsurv_ci
+<topo>_iplr_mean,<topo>_iplr_ci
 ```
 
 ### 10.5 `strategy_comparison.csv`
@@ -1303,11 +1307,11 @@ metric,topology_a,topology_b,U,p_raw,p_holm,significant,direction
 topology,gatekeeper,R,lcc_mean,lcc_ci,phi_mean,phi_ci,
 eff_mean,eff_ci,eff_qos_mean,eff_qos_ci,qos_mean,qos_ci,
 iptd_mean_ms,iptd_ci,iplr_mean,iplr_ci,
-sig_direction,p_raw,p_holm,sig_phi_direction,p_phi,exhaustion_rate
+sig_direction,p_raw,p_holm,sig_phi_direction,p_phi_raw,p_phi_holm,exhaustion_rate
 ```
 
-`sig_direction`/`p_raw`/`p_holm` — E_QoS; `sig_phi_direction`/`p_phi` — φ_w.
-`p_holm` здесь равен `p_raw` (нет коррекции).
+`sig_direction`/`p_raw`/`p_holm` — E_QoS; `sig_phi_direction`/`p_phi_raw`/`p_phi_holm` — φ_w.
+Обе p_holm-колонки содержат поправку Холма по 20 сравнениям.
 
 ### 10.6 `attack_vector_analysis.csv`
 

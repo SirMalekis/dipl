@@ -13,10 +13,10 @@ namespace netsim {
 
 namespace {
 
-// t-критическое значение: таблица для малых df и нормальное приближение
-// (поправка Корниша–Фишера) для больших.
-double tCritical(int df, double alpha = 0.05) {
-    (void)alpha;
+// t-критическое значение для двустороннего 95 % интервала: таблица для
+// малых df и нормальное приближение (поправка Корниша–Фишера) для больших.
+// Альфа фиксирована: все отчёты комплекса используют 95 % ДИ.
+double tCritical(int df) {
     if (df <= 0) return std::numeric_limits<double>::quiet_NaN();
 
     static const double table[] = {
@@ -55,20 +55,48 @@ std::pair<double, double> mannWhitneyU(const std::vector<double>& a,
                                        const std::vector<double>& b) {
     const int n1 = static_cast<int>(a.size());
     const int n2 = static_cast<int>(b.size());
-    double U1 = 0.0;
-    for (double x : a)
-        for (double y : b) U1 += (x > y) ? 1.0 : (x == y ? 0.5 : 0.0);
+    if (n1 == 0 || n2 == 0) return {0.0, 1.0};
 
+    // Ранжирование объединённой выборки со средними рангами для связей.
+    std::vector<std::pair<double, int>> pooled;
+    pooled.reserve(static_cast<size_t>(n1 + n2));
+    for (double value : a) pooled.push_back({value, 0});
+    for (double value : b) pooled.push_back({value, 1});
+    std::sort(pooled.begin(), pooled.end(),
+              [](const auto& lhs, const auto& rhs) {
+                  return lhs.first < rhs.first;
+              });
+
+    const int total = n1 + n2;
+    double rank_sum_a = 0.0;
+    double tie_sum = 0.0;
+    for (int i = 0; i < total;) {
+        int j = i + 1;
+        while (j < total && pooled[j].first == pooled[i].first) ++j;
+        const double rank = (i + j + 1) / 2.0;  // средний 1-based ранг
+        for (int k = i; k < j; ++k)
+            if (pooled[k].second == 0) rank_sum_a += rank;
+        const double ties = static_cast<double>(j - i);
+        tie_sum += ties * ties * ties - ties;
+        i = j;
+    }
+
+    const double U1 = rank_sum_a - n1 * (n1 + 1) / 2.0;
     const double U2 = static_cast<double>(n1) * n2 - U1;
     const double U = std::min(U1, U2);
 
     const double mean_U = static_cast<double>(n1) * n2 / 2.0;
-    const double std_U =
-        std::sqrt(static_cast<double>(n1) * n2 * (n1 + n2 + 1) / 12.0);
-    if (std_U <= 0.0) return {U, 1.0};
+    double variance =
+        static_cast<double>(n1) * n2 / 12.0 * (total + 1.0);
+    if (total > 1)
+        variance -= static_cast<double>(n1) * n2 * tie_sum /
+                    (12.0 * total * (total - 1.0));
+    if (variance <= 0.0) return {U, 1.0};
 
-    const double z = (U - mean_U) / std_U;
-    const double p = std::erfc(std::abs(z) / std::sqrt(2.0));
+    // Поправка на непрерывность: |U − μ| − 0.5.
+    double z = (std::abs(U - mean_U) - 0.5) / std::sqrt(variance);
+    if (z < 0.0) z = 0.0;
+    const double p = std::erfc(z / std::sqrt(2.0));
     return {U, p};
 }
 
@@ -98,7 +126,7 @@ void report(const ProgressFn& progress, double fraction,
 }  // namespace
 
 std::pair<double, double> confidenceInterval(
-    const std::vector<double>& samples, double alpha) {
+    const std::vector<double>& samples) {
     const int n = static_cast<int>(samples.size());
     if (n < 2)
         return {std::numeric_limits<double>::quiet_NaN(),
@@ -110,7 +138,7 @@ std::pair<double, double> confidenceInterval(
     for (double x : samples) sq += (x - mean) * (x - mean);
     const double std_dev = std::sqrt(sq / (n - 1));
     const double se = std_dev / std::sqrt(static_cast<double>(n));
-    return {tCritical(n - 1, alpha) * se, se};
+    return {tCritical(n - 1) * se, se};
 }
 
 SigMap pairwiseSignificance(
@@ -333,6 +361,8 @@ StrategyResults runStrategyComparison(
     const int total = std::max(
         1, static_cast<int>(topologies.size() * 2 * resource_levels.size() * n_sims));
     int done = 0;
+    std::vector<SigResult*> qos_tests;
+    std::vector<SigResult*> phi_tests;
 
     for (const auto& topo : topologies) {
         for (const std::string gk : {"fifo", "triage"}) {
@@ -383,6 +413,42 @@ StrategyResults runStrategyComparison(
             output[topo]["triage"][r].sig = sig_qos;
             output[topo]["fifo"][r].sig_phi = sig_phi;
             output[topo]["triage"][r].sig_phi = sig_phi;
+            qos_tests.push_back(&output[topo]["fifo"][r].sig);
+            phi_tests.push_back(&output[topo]["fifo"][r].sig_phi);
+        }
+    }
+
+    // Поправка Холма по всем сравнениям strategy (все топологии × R),
+    // отдельно для E_QoS и φ_w. До этого p_holm совпадал с p_raw.
+    auto adjust_holm = [](std::vector<SigResult*>& tests) {
+        if (tests.empty()) return;
+        std::vector<size_t> order(tests.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            return tests[a]->p_raw < tests[b]->p_raw;
+        });
+        for (size_t rank = 0; rank < order.size(); ++rank) {
+            SigResult& test = *tests[order[rank]];
+            test.p_holm = std::min(
+                test.p_raw * static_cast<double>(tests.size() - rank), 1.0);
+        }
+        for (size_t rank = 1; rank < order.size(); ++rank) {
+            SigResult& prev = *tests[order[rank - 1]];
+            SigResult& curr = *tests[order[rank]];
+            curr.p_holm = std::max(curr.p_holm, prev.p_holm);
+        }
+        for (SigResult* test : tests) {
+            test->significant = test->p_holm < 0.05;
+            if (!test->significant) test->direction = "~";
+        }
+    };
+    adjust_holm(qos_tests);
+    adjust_holm(phi_tests);
+    for (const auto& topo : topologies) {
+        for (double r : resource_levels) {
+            output[topo]["triage"][r].sig = output[topo]["fifo"][r].sig;
+            output[topo]["triage"][r].sig_phi =
+                output[topo]["fifo"][r].sig_phi;
         }
     }
     return output;

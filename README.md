@@ -8,7 +8,7 @@
 
 ## Возможности
 
-- **Y.1541**: классы QoS 0–7, пороги IPTD / IPDV / IPLR / IPER, проверка путей.
+- **Y.1541**: классы QoS 0–7, пороги IPTD / IPDV / IPLR / IPER; проверяются IPTD, IPDV и IPLR (IPER/IPRR не моделируются).
 - **M/M/1(K)**: пересчёт пропускной способности и загрузки канала в задержку,
   вероятность потери и IPDV.
 - **QoS-эффективность** `E_QoS` — нормированная глобальная эффективность,
@@ -36,8 +36,8 @@
 
 ### 1. Сборка C++-ядра
 
-Требуется Visual Studio 2022/2026 с компонентом «Разработка классических
-приложений на C++».
+Требуется Visual Studio 2026 (toolset v145) с компонентом «Разработка
+классических приложений на C++»; для VS 2022 замените toolset на v143.
 
 ```powershell
 .\build.ps1
@@ -50,7 +50,7 @@ msbuild netsim.vcxproj /p:Configuration=Release /p:Platform=x64
 ### 2. Запуск GUI
 
 ```powershell
-python -m pip install customtkinter matplotlib pandas
+python -m pip install -r requirements.txt
 python run_gui.py
 ```
 
@@ -141,6 +141,7 @@ GUI создаёт прогоны с именем `runs/<сценарий>_<ГГ
 ```powershell
 .\tests\build_tests.ps1
 .\tests\test_core.exe
+.\tests\cli_smoke.ps1
 .\x64\Release\netsim.exe selftest
 python run_gui.py --selftest
 ```
@@ -155,6 +156,7 @@ python run_gui.py --selftest
 - [Топологии ER и BA](docs/05_topolologii.md)
 - [Запуски, имена прогонов и таблицы](docs/06_zapuski_i_dannye.md)
 - [Технический аудит](docs/07_tehnicheskiy_audit.md)
+- [Исправление дефектов аудита](docs/08_ispravleniya.md)
 - [DOCX «Топологии ER и BA»](docs/Topologii_ER_BA.docx)
 - [PDF «Топологии ER и BA»](docs/Topologii_ER_BA.pdf)
 - [Результаты экспериментов](docs/04_rezultaty.md)

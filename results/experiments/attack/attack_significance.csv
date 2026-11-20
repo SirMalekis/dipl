@@ -1,0 +1,16 @@
+metric,topology,strategy_a,strategy_b,U,p_raw,p_holm,significant,direction
+e_qos_norm,barabasi_albert,cascading,random,135.000000,8.103e-02,8.103e-02,0,~
+e_qos_norm,barabasi_albert,cascading,targeted,0.000000,6.796e-08,2.039e-07,1,cascading > targeted
+e_qos_norm,barabasi_albert,random,targeted,0.000000,6.796e-08,2.039e-07,1,random > targeted
+e_qos_norm,erdos_renyi,cascading,random,172.000000,4.570e-01,4.570e-01,0,~
+e_qos_norm,erdos_renyi,cascading,targeted,116.000000,2.390e-02,7.171e-02,0,~
+e_qos_norm,erdos_renyi,random,targeted,132.000000,6.787e-02,1.357e-01,0,~
+e_qos_norm,full_mesh,cascading,random,200.000000,1.000e+00,1.000e+00,0,~
+e_qos_norm,full_mesh,cascading,targeted,200.000000,1.000e+00,1.000e+00,0,~
+e_qos_norm,full_mesh,random,targeted,200.000000,1.000e+00,1.000e+00,0,~
+e_qos_norm,ring,cascading,random,42.000000,2.041e-05,4.081e-05,1,cascading > random
+e_qos_norm,ring,cascading,targeted,37.000000,1.104e-05,3.313e-05,1,cascading > targeted
+e_qos_norm,ring,random,targeted,176.000000,5.250e-01,5.250e-01,0,~
+e_qos_norm,star,cascading,random,2.000000,9.173e-08,2.752e-07,1,random > cascading
+e_qos_norm,star,cascading,targeted,197.000000,9.461e-01,9.461e-01,0,~
+e_qos_norm,star,random,targeted,2.000000,9.173e-08,2.752e-07,1,random > targeted

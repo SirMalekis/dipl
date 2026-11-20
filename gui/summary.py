@@ -63,12 +63,14 @@ def _p(value) -> str:
 
 
 def _direction(value) -> str:
-    text = str(value)
+    text = str(value).strip()
+    if text in ("", "~", "nan", "None"):
+        return "~"
     if text.startswith("triage"):
         return "Triage > FIFO"
     if text.startswith("fifo"):
         return "FIFO > Triage"
-    return "~"
+    return text
 
 
 def _mean(series) -> float:
@@ -152,13 +154,15 @@ def _strategy_table(run_dir: Path):
                 continue
             f = fifo.iloc[0]
             t = triage.iloc[0]
+            p_phi_column = ("p_phi_holm"
+                            if "p_phi_holm" in frame.columns else "p_phi")
             rows.append([
                 _num(resource, 0), topology,
                 _num(f.get("lcc_mean", 0.0)), _num(t.get("lcc_mean", 0.0)),
                 _num(f.get("eff_qos_mean", 0.0)),
                 _num(t.get("eff_qos_mean", 0.0)),
                 _num(f.get("phi_mean", 0.0)), _num(t.get("phi_mean", 0.0)),
-                _p(f.get("p_phi", 1.0)),
+                _p(f.get(p_phi_column, 1.0)),
                 _direction(f.get("sig_phi_direction", "~")),
             ])
     return headers, rows, (
@@ -189,6 +193,30 @@ def _attack_table(run_dir: Path):
     return headers, rows, (
         "Сравнение векторов атак по топологиям; Q — доля пар с QoS, "
         "IPLR — средние потери.")
+
+
+def _attack_significance_table(run_dir: Path):
+    path = run_dir / "attack_significance.csv"
+    frame = data.read_csv(path) if path.is_file() else None
+    if frame is None or frame.empty:
+        return [], [], ""
+    headers = ["Топология", "Стратегия A", "Стратегия B",
+               "U", "p (raw)", "p (Холм)", "Значимость", "Направление"]
+    rows = []
+    for _, row in frame.iterrows():
+        rows.append([
+            str(row.get("topology", "—")),
+            str(row.get("strategy_a", "—")),
+            str(row.get("strategy_b", "—")),
+            _num(row.get("U", 0.0), 1),
+            _p(row.get("p_raw", 1.0)),
+            _p(row.get("p_holm", 1.0)),
+            "да" if str(row.get("significant", "0")) == "1" else "нет",
+            _direction(row.get("direction", "~")),
+        ])
+    return headers, rows, (
+        "Попарные U-тесты E_QoS между векторами атак; p (Холм) — "
+        "с поправкой на множественные сравнения внутри топологии.")
 
 
 def _timeseries_table(run_dir: Path):
@@ -286,6 +314,8 @@ def available_sets(run_dir: Path) -> list[tuple[str, str]]:
         result.append(("FIFO/Triage", "strategy"))
     if (run_dir / "attack_vector_analysis.csv").is_file():
         result.append(("Атаки", "attack"))
+    if (run_dir / "attack_significance.csv").is_file():
+        result.append(("Атаки: значимость", "attack_significance"))
     if any(run_dir.glob("timeseries_*.csv")):
         result.append(("Временные ряды", "timeseries"))
     if (run_dir / "topology_structure.csv").is_file():
@@ -302,6 +332,8 @@ def build(run_dir: Path, key: str):
         return _strategy_table(run_dir)
     if key == "attack":
         return _attack_table(run_dir)
+    if key == "attack_significance":
+        return _attack_significance_table(run_dir)
     if key == "timeseries":
         return _timeseries_table(run_dir)
     if key == "structure":

@@ -35,6 +35,10 @@ void exportAttackVectorAnalysis(
     const std::map<std::string, std::map<std::string, MCResult>>& results,
     const std::string& path);
 
+void exportAttackSignificance(
+    const std::map<std::string, SigMap>& by_topology,
+    const std::string& path);
+
 void exportRunMetadata(const SimConfig& config,
                        const SimResult& result,
                        const std::string& path);

@@ -20,12 +20,12 @@ e0_qos,223.816571171
 baseline_qos_ok,1
 first_failure_time,1.55363026446
 had_failure,1
-attacks,138
+attacks,135
 attacks_successful,86
-recoveries_success,74
+recoveries_success,75
 recoveries_failed,6
-resources_consumed,198
+resources_consumed,200
 resource_exhausted,1
-mean_queue_depth,7.96537600743
-mean_slots_used,2.85599789495
+mean_queue_depth,7.95289301529
+mean_slots_used,2.85852213035
 max_queue_depth,17

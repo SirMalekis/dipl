@@ -229,9 +229,15 @@ Graph createNetworkTopology(const TopologyParams& p) {
               });
 
     const bool hetero = p.heterogeneous;
-    const double mu_mult = (p.base_mu > 0.0) ? (p.base_mu / 0.20) : 1.0;
-    const double attack_mult =
-        (p.base_P_attack > 0.0) ? (p.base_P_attack / 0.60) : 1.0;
+    const double mu_mult = std::max(0.0, p.base_mu) / 0.20;
+    const double attack_mult = std::max(0.0, p.base_P_attack) / 0.60;
+    // В гетерогенном режиме базовые значения задают масштаб профилей,
+    // а не абсолютные параметры: профили server/switch/host сохраняют
+    // соотношение стоимости и критичности.
+    const double recovery_mult = std::max(0.0, p.base_P_recovery) / 0.80;
+    const double cost_mult =
+        (p.base_C_repair >= 0) ? static_cast<double>(p.base_C_repair) : 0.0;
+    const double weight_mult = (p.base_weight >= 0.0) ? p.base_weight : 0.0;
 
     int n_servers = std::max(1, static_cast<int>(n * 0.15));
     int n_switches = std::max(1, static_cast<int>(n * 0.20));
@@ -258,12 +264,14 @@ Graph createNetworkTopology(const TopologyParams& p) {
             const NodeProfile& prof = NODE_PROFILES.at(type);
             node.node_type = type;
             node.P_attack = jitter(rng, prof.P_attack * attack_mult, 0.05);
-            node.P_recovery = jitter(rng, prof.P_recovery, 0.05);
+            node.P_recovery =
+                jitter(rng, prof.P_recovery * recovery_mult, 0.05);
             node.mu = clamp(prof.mu * mu_mult +
                             std::uniform_real_distribution<double>(-0.02, 0.02)(rng),
                             0.01, 1.0);
-            node.C_repair = prof.C_repair;
-            node.weight = prof.weight;
+            node.C_repair = std::max(
+                0, static_cast<int>(std::llround(prof.C_repair * cost_mult)));
+            node.weight = std::max(0.0, prof.weight * weight_mult);
         } else {
             node.P_attack = clamp(p.base_P_attack +
                                   std::uniform_real_distribution<double>(-0.05, 0.05)(rng),

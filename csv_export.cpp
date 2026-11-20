@@ -82,8 +82,7 @@ void exportTopologyComparison(const TopoCompResult& comparison,
             "eff_mean,eff_ci,eff_qos_mean,eff_qos_ci,"
             "qos_ratio_mean,qos_ratio_ci,iptd_mean_ms,iptd_ci,"
             "iplr_mean,iplr_ci,ipdv_mean_ms,ipdv_ci,"
-            "queue_mean,queue_ci,exhaustion_rate,baseline_qos_rate,"
-            "wsurv_mean,wsurv_ci\n";
+            "queue_mean,queue_ci,exhaustion_rate,baseline_qos_rate\n";
 
     for (const auto& [topo, mc] : comparison.results) {
         file << escape(topo) << ","
@@ -96,8 +95,7 @@ void exportTopologyComparison(const TopoCompResult& comparison,
              << mc.iplr.mean << "," << mc.iplr.ci << ","
              << mc.ipdv_ms.mean << "," << mc.ipdv_ms.ci << ","
              << mc.queue_depth.mean << "," << mc.queue_depth.ci << ","
-             << mc.exhaustion_rate << "," << mc.baseline_qos_rate << ","
-             << mc.phi_w.mean << "," << mc.phi_w.ci << "\n";
+             << mc.exhaustion_rate << "," << mc.baseline_qos_rate << "\n";
     }
     std::cout << "Сохранено: " << path << "\n";
 }
@@ -150,8 +148,7 @@ void exportParameterSweep(
                  << "," << topo << "_eff_qos_mean," << topo << "_eff_qos_ci"
                  << "," << topo << "_qos_mean," << topo << "_qos_ci"
                  << "," << topo << "_iptd_mean," << topo << "_iptd_ci"
-                 << "," << topo << "_iplr_mean," << topo << "_iplr_ci"
-                 << "," << topo << "_wsurv_mean," << topo << "_wsurv_ci";
+                 << "," << topo << "_iplr_mean," << topo << "_iplr_ci";
         }
         file << "\n";
 
@@ -160,7 +157,7 @@ void exportParameterSweep(
             for (const auto& topo : topos) {
                 const SweepResult& sr = topo_map.at(topo);
                 if (i >= sr.lcc_means.size()) {
-                    file << ",,,,,,,,,,,,,,,,";
+                    for (int k = 0; k < 14; ++k) file << ",";
                     continue;
                 }
                 file << "," << sr.lcc_means[i] << "," << sr.lcc_ci[i]
@@ -169,8 +166,7 @@ void exportParameterSweep(
                      << "," << sr.e_qos_means[i] << "," << sr.e_qos_ci[i]
                      << "," << sr.qos_means[i] << "," << sr.qos_ci[i]
                      << "," << sr.iptd_means[i] << "," << sr.iptd_ci[i]
-                     << "," << sr.iplr_means[i] << "," << sr.iplr_ci[i]
-                     << "," << sr.phi_means[i] << "," << sr.phi_ci[i];
+                     << "," << sr.iplr_means[i] << "," << sr.iplr_ci[i];
             }
             file << "\n";
         }
@@ -187,7 +183,7 @@ void exportStrategyComparison(const StrategyResults& results,
     file << "topology,gatekeeper,R,lcc_mean,lcc_ci,phi_mean,phi_ci,"
             "eff_mean,eff_ci,eff_qos_mean,eff_qos_ci,qos_mean,qos_ci,"
             "iptd_mean_ms,iptd_ci,iplr_mean,iplr_ci,sig_direction,p_raw,p_holm,"
-            "sig_phi_direction,p_phi,exhaustion_rate\n";
+            "sig_phi_direction,p_phi_raw,p_phi_holm,exhaustion_rate\n";
 
     for (const auto& [topo, gk_map] : results) {
         for (const auto& [gk, r_map] : gk_map) {
@@ -210,6 +206,8 @@ void exportStrategyComparison(const StrategyResults& results,
                 writeP(file, point.sig.p_holm);
                 file << "," << escape(point.sig_phi.direction) << ",";
                 writeP(file, point.sig_phi.p_raw);
+                file << ",";
+                writeP(file, point.sig_phi.p_holm);
                 file << "," << mc.exhaustion_rate << "\n";
             }
         }
@@ -242,9 +240,33 @@ void exportAttackVectorAnalysis(
     std::cout << "Сохранено: " << path << "\n";
 }
 
+void exportAttackSignificance(
+    const std::map<std::string, SigMap>& by_topology,
+    const std::string& path) {
+    auto file = openCsv(path);
+    if (!file) return;
+
+    file << "metric,topology,strategy_a,strategy_b,U,p_raw,p_holm,"
+            "significant,direction\n";
+    for (const auto& [topology, tests] : by_topology) {
+        for (const auto& [pair, sig] : tests) {
+            file << "e_qos_norm," << escape(topology) << ","
+                 << escape(pair.first) << "," << escape(pair.second) << ","
+                 << sig.U << ",";
+            writeP(file, sig.p_raw);
+            file << ",";
+            writeP(file, sig.p_holm);
+            file << "," << (sig.significant ? 1 : 0) << ","
+                 << escape(sig.direction) << "\n";
+        }
+    }
+    std::cout << "Сохранено: " << path << "\n";
+}
+
 void exportRunMetadata(const SimConfig& config,
                        const SimResult& result,
-                       const std::string& path) {    auto file = openCsv(path);
+                       const std::string& path) {
+    auto file = openCsv(path);
     if (!file) return;
 
     file << "key,value\n";

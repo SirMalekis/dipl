@@ -84,8 +84,7 @@ using StrategyResults = std::map<std::string,
         std::map<double, StrategyPoint>>>;
 
 // Статистические функции.
-std::pair<double, double> confidenceInterval(const std::vector<double>& samples,
-                                             double alpha = 0.05);
+std::pair<double, double> confidenceInterval(const std::vector<double>& samples);
 SigMap pairwiseSignificance(
     const std::map<std::string, std::vector<double>>& raw_samples,
     double alpha = 0.05);
