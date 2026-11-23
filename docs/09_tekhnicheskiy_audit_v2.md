@@ -70,6 +70,7 @@ D:\ddipl
 │   ├── 09_tekhnicheskiy_audit_v2.md полный повторный аудит
 │   ├── 10_karta_koda_i_zapusk.md карта функций и launcher
 │   ├── 11_eksperimenty_showcase.md 5 демо-режимов
+│   ├── 12_plan_redaktirovaniya_PZ.md план редакции ПЗ
 │   ├── Teoreticheskoe_obosnovanie.docx/.pdf
 │   └── Topologii_ER_BA.docx/.pdf
 ├── results/
@@ -947,7 +948,8 @@ CLI_SMOKE_OK; selftest успешен; GUI self-test успешен; `demo` бе
 - `run_showcase.cmd` / `scripts/run_showcase.ps1` — пять режимов,
   сводный CSV/PNG и пять GUI-скриншотов;
 - `tests/showcase_check.py` — пороговая проверка монотонности;
-- `docs/10` — карта функций; `docs/11` — параметры пяти режимов.
+- `docs/10` — карта функций; `docs/11` — параметры пяти режимов;
+- `docs/12` — постраничный план редакции ПЗ НИР под текущую версию.
 
 Пять режимов (ER, N=50, 10 прогонов, T=60):
 

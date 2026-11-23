@@ -421,6 +421,9 @@ CSV — единственный контракт между C++ и Python; GUI 
 5. **`--demo` в launcher-е** — можно добавить запуск demo и сразу
    `--open-run`; сейчас demo запускается из GUI одним сценарием.
 
+План переноса этих изменений в текст ПЗ НИР — в
+[docs/12_plan_redaktirovaniya_PZ.md](12_plan_redaktirovaniya_PZ.md).
+
 ---
 
 ## 6. Диагностика запуска
