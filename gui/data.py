@@ -127,9 +127,13 @@ def _average(frame: pd.DataFrame, column: str) -> float:
 def summarize_run(run_dir: Path, topology: str | None = None) -> dict:
     """Возвращает карточки метрик для выбранного прогона."""
     summary: dict = {"source": "—", "topology": "—", "metrics": {}}
+    config = read_config(run_dir / "config.ini")
+    scenario = config.get("scenario", "")
 
     series = load_time_series(run_dir)
-    if series:
+    # Для сценария topology карточки должны совпадать с топологическим
+    # сравнением (средние по Монте-Карло), даже если рядом лежит timeseries.
+    if series and scenario != "topology":
         name = topology if topology in series else next(iter(series))
         frame = series[name]
         metrics = {

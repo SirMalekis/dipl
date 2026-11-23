@@ -162,6 +162,14 @@ launcher-а — в [docs/10_karta_koda_i_zapusk.md](10_karta_koda_i_zapusk.md).
 Это рекомендуемый способ проверить все возможности. Подробнее об именах
 прогонов и таблицах — в [docs/06_zapuski_i_dannye.md](06_zapuski_i_dannye.md).
 
+### 4.8 Пять showcase-режимов для скриншотов
+
+`run_showcase.cmd` запускает пять ER-режимов: катастрофа → тяжёлый →
+базовый → хороший → отличный. Для каждого создаются CSV, PNG и
+скриншот «Динамики»; `tests/showcase_check.py` проверяет монотонность и
+критические пороги. Параметры и ожидаемые числа — в
+[docs/11_eksperimenty_showcase.md](11_eksperimenty_showcase.md).
+
 ## 5. Пакетный режим
 
 ```powershell

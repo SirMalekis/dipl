@@ -1,0 +1,2 @@
+topology,nodes,edges,avg_degree,min_degree,max_degree,degree_cv,clustering,avg_path_length,diameter,assortativity,components,lcc_fraction,expected_avg_degree,ccdf_slope,gamma_est,purpose
+erdos_renyi,50,101,4.040000,1,8,0.487311,0.097015,2.817959,5,-0.290382,1,1.000000,4.900000,-1.987824,1.992871,"Однородный случайный граф G(N,p): базовая модель без выраженных хабов, нулевая гипотеза для сравнения."

@@ -59,9 +59,23 @@ start_netsim.cmd --rebuild
 - `start_netsim.cmd --selftest` — `GUI_SELFTEST_OK`, код 0;
 - `start_netsim.cmd --rebuild --help` — сборка + `--help`, код 0;
 - `build.ps1` сохранён в UTF-8 с BOM, чтобы Windows PowerShell 5.1
-  корректно читал русские строки; `tests/*.ps1` — также с BOM.
+  корректно читал русские строки; `tests/*.ps1` — также с BOM;
+- `run_showcase.cmd` запускает пять режимов, проверяет пороги и делает
+  скриншоты; результат `SHOWCASE_OK`.
 
-### 1.4 Можно ли сделать «один .exe»?
+### 1.4 Пять showcase-режимов
+
+```text
+run_showcase.cmd
+run_showcase.cmd -NoScreenshots
+```
+
+Создаются `results/showcase/01_catastrophe` … `05_excellent`,
+`showcase_summary.csv`, `showcase_summary.png` и
+`docs/img/showcase_*.png`. Параметры и пороги — в
+[docs/11_eksperimenty_showcase.md](11_eksperimenty_showcase.md).
+
+### 1.5 Можно ли сделать «один .exe»?
 
 Да, но это отдельный способ упаковки, а не текущий launcher.
 
@@ -356,6 +370,18 @@ dispatch scenario:
 `main` проходит по прогону, строит `timeseries_*.png`, `topology.png`,
 `attack.png`, `strategy_E_QoS.png`, `strategy_phi_w.png`, `sweep.png`,
 `degree_<topo>.png`; `save` сохраняет Figure.
+
+### 3.9 Служебные скрипты и тесты
+
+| Файл | Функция | Назначение |
+|---|---|---|
+| `scripts/run_showcase.ps1` | — | 5 режимов (timeseries + topology), plots, скриншоты, summary + пороги |
+| `scripts/make_showcase_summary.py` | `main`, `read_ini` | `showcase_summary.csv`, `showcase_summary.png`, Markdown-таблица |
+| `tests/showcase_check.py` | `main`, `require` | монотонность и критические пороги 5 режимов |
+| `tests/test_core.cpp` | `main`, `check`, `checkNear`, `makeLine` | 82 проверки ядра |
+| `tests/cli_smoke.ps1` | — | CLI без `--progress` |
+| `start_netsim.cmd` | — | сборка при необходимости + GUI |
+| `run_showcase.cmd` | — | запуск showcase в один клик |
 
 ---
 

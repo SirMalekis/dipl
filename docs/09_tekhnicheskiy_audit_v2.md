@@ -3,9 +3,10 @@
 **Объект:** C++-ядро + Python/CustomTkinter GUI программного комплекса
 моделирования устойчивости и QoS информационных инфраструктур.
 **Версия ПО:** `2.0.0` (`main.cpp`).
-**Состояние кода:** `7bf2104` + правка границ вероятностей `P_attack/P_recovery`
-и удаление неиспользуемого `sampleType` (входит в коммит с этим отчётом).
-**Дата:** 20.11.2026.
+**Состояние кода:** `7bf2104` + правки границ вероятностей, удаление
+неиспользуемого `sampleType`, launcher `start_netsim.cmd` и showcase-скрипты
+(входят в коммит с этим отчётом).
+**Дата:** 23.11.2026 (раздел 12 — после добавления showcase и launcher-а).
 **Рабочий каталог:** `D:\ddipl`.
 
 Аудит выполнен по исходникам `.h/.cpp/.py`, `netsim.vcxproj`,
@@ -43,10 +44,13 @@ D:\ddipl
 ├── requirements.txt          Python-зависимости GUI/скриптов
 ├── plot_results.py           автономное построение PNG по CSV
 ├── run_gui.py                --selftest/--open-run/--tab
+├── start_netsim.cmd          один файл: сборка + GUI
+├── run_showcase.cmd          один файл: 5 режимов + скриншоты
 ├── tests/
 │   ├── test_core.cpp         82 проверки ядра
 │   ├── build_tests.ps1       cl /std:c++20, запуск тестов
-│   └── cli_smoke.ps1         CLI без --progress + selftest
+│   ├── cli_smoke.ps1         CLI без --progress + selftest
+│   └── showcase_check.py     пороги 5 showcase-режимов
 ├── gui/
 │   ├── app.py                App(CTk), страницы, 8 вкладок, запуск
 │   ├── core.py               поиск netsim.exe, INI, CoreRunner, progress
@@ -63,10 +67,14 @@ D:\ddipl
 │   ├── 06_zapuski_i_dannye.md имена прогонов и таблицы
 │   ├── 07_tehnicheskiy_audit.md исторический аудит до исправлений
 │   ├── 08_ispravleniya.md    перечень исправлений и проверок
+│   ├── 09_tekhnicheskiy_audit_v2.md полный повторный аудит
+│   ├── 10_karta_koda_i_zapusk.md карта функций и launcher
+│   ├── 11_eksperimenty_showcase.md 5 демо-режимов
 │   ├── Teoreticheskoe_obosnovanie.docx/.pdf
 │   └── Topologii_ER_BA.docx/.pdf
 ├── results/
 │   ├── experiments/          7 архивных прогонов + CSV + plots
+│   ├── showcase/             5 демо-режимов + summary CSV/PNG
 │   ├── last_config.ini       последняя конфигурация для --quick
 │   └── plot_topology.png, topology_comparison.csv удалены как устаревшие
 └── scripts/
@@ -875,11 +883,12 @@ self-test и demo проходят. Остаются **ограничения м
 .\x64\Release\netsim.exe selftest
 python -m py_compile run_gui.py plot_results.py gui\*.py
 python run_gui.py --selftest
+run_showcase.cmd               # 5 режимов + SHOWCASE_OK
 ```
 
 Фактический результат: сборка успешна; 82 проверки, 0 провалов;
 CLI_SMOKE_OK; selftest успешен; GUI self-test успешен; `demo` без
-`--progress` — код 0, 58,6 с, 23 CSV.
+`--progress` — код 0, 58,6 с, 23 CSV; showcase — `SHOWCASE_OK`.
 
 Воспроизводимость: у каждого прогона фиксированный seed 42; Монте-Карло
 использует `cfg.seed + i·1000003`; топология использует
@@ -925,3 +934,45 @@ CLI_SMOKE_OK; selftest успешен; GUI self-test успешен; `demo` бе
 исследовательского моделирования и подготовки отчётов. Критические
 дефекты предыдущего аудита устранены; оставшиеся пункты — явно
 задокументированные ограничения модели, а не ошибки сборки/запуска.
+
+---
+
+## 12. Проверка после добавления showcase и launcher-а
+
+Добавлены:
+
+- `start_netsim.cmd` — один файл: при необходимости собирает ядро и
+  открывает GUI; аргументы пробрасываются, `--rebuild` обрабатывается
+  launcher-ом;
+- `run_showcase.cmd` / `scripts/run_showcase.ps1` — пять режимов,
+  сводный CSV/PNG и пять GUI-скриншотов;
+- `tests/showcase_check.py` — пороговая проверка монотонности;
+- `docs/10` — карта функций; `docs/11` — параметры пяти режимов.
+
+Пять режимов (ER, N=50, 10 прогонов, T=60):
+
+| # | Режим | λ | R | Слотов | E_QoS | Q | LCC | φ_w | IPLR | Истощение |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | Катастрофа | 5,0 | 10 | 1 | 0,000 | 0,000 | 0,097 | 0,062 | 1,061·10⁻³ | 100 % |
+| 2 | Тяжёлый | 2,0 | 30 | 1 | 0,075 | 0,001 | 0,261 | 0,171 | 3,899·10⁻³ | 60 % |
+| 3 | Базовый | 1,0 | 200 | 3 | 0,643 | 0,724 | 0,838 | 0,643 | 0 | 0 % |
+| 4 | Хороший | 0,2 | 500 | 5 | 0,960 | 0,974 | 0,987 | 0,960 | 0 | 0 % |
+| 5 | Отличный | 0,02 | 2000 | 10 | 0,993 | 0,997 | 0,998 | 0,995 | 0 | 0 % |
+
+Проверка `tests/showcase_check.py`:
+
+- E_QoS/Q/LCC/φ_w монотонны с допуском 0,02;
+- стадия 1: E_QoS ≤ 0,01, Q ≤ 0,01, LCC ≤ 0,30, φ_w ≤ 0,20,
+  IPLR ≥ 10⁻³, истощение ≥ 90 %;
+- стадия 2: E_QoS ≤ 0,15, IPLR ≥ 10⁻³;
+- стадия 3: 0,30 ≤ E_QoS ≤ 0,80;
+- стадия 4: E_QoS ≥ 0,85;
+- стадия 5: E_QoS ≥ 0,97, Q ≥ 0,95, LCC ≥ 0,95, φ_w ≥ 0,95,
+  IPLR ≤ 10⁻⁶, истощение = 0;
+- E_QoS(5) − E_QoS(4) ≤ 0,10, то есть атаки почти не влияют.
+
+Фактический результат: `SHOWCASE_OK`; сборка, 82 C++-теста, CLI-smoke,
+selftest, GUI self-test и launcher (`--selftest`, `--rebuild --help`)
+проходят. Новых критических дефектов не обнаружено. Ограничения модели
+из раздела 8 остаются в силе; showcase — демонстрационные профили
+нагрузки, а не калибровка конкретной реальной сети.

@@ -1,0 +1,2 @@
+topology,lcc_mean,lcc_ci,phi_w_mean,phi_w_ci,eff_mean,eff_ci,eff_qos_mean,eff_qos_ci,qos_ratio_mean,qos_ratio_ci,iptd_mean_ms,iptd_ci,iplr_mean,iplr_ci,ipdv_mean_ms,ipdv_ci,queue_mean,queue_ci,exhaustion_rate,baseline_qos_rate
+erdos_renyi,0.838203,0.052180,0.643274,0.065766,0.643278,0.071000,0.643278,0.071000,0.723837,0.074446,6.073057,0.306351,0.000000,0.000000,0.145752,0.011059,3.889138,1.358275,0.000000,1.000000

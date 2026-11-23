@@ -88,6 +88,20 @@ GUI сам находит `x64\Release\netsim.exe`. Если ядро лежит
 python plot_results.py results\run1
 ```
 
+## Демонстрационные эксперименты
+
+Пять готовых режимов — от катастрофы до устойчивой сети — запускаются
+одним файлом:
+
+```powershell
+run_showcase.cmd
+```
+
+Скрипт создаёт `results/showcase/01_catastrophe` … `05_excellent`,
+сводный CSV/PNG, скриншоты и проверяет пороги
+`tests/showcase_check.py` (`SHOWCASE_OK`). Подробности, параметры и
+ожидаемые числа — в [docs/11_eksperimenty_showcase.md](docs/11_eksperimenty_showcase.md).
+
 ## Сценарии
 
 | Сценарий | Назначение |
@@ -115,6 +129,7 @@ GUI создаёт прогоны с именем `runs/<сценарий>_<ГГ
 
 ```
 ├── start_netsim.cmd    one-click launcher (build + GUI)
+├── run_showcase.cmd    one-click showcase (5 режимов + скриншоты)
 ├── topology.h/.cpp      направленный граф и генераторы топологий
 ├── topology_metrics.h/.cpp  структурный анализ ER/BA
 ├── qos.h/.cpp           классы Y.1541, M/M/1(K), проверка путей
@@ -149,6 +164,10 @@ GUI создаёт прогоны с именем `runs/<сценарий>_<ГГ
 |---|
 | ![Сводка](docs/img/gui_summary.png) |
 
+| Пять showcase-режимов: от катастрофы к устойчивой сети |
+|---|
+| ![Showcase](docs/img/showcase_summary.png) |
+
 ## Тесты
 
 ```powershell
@@ -169,6 +188,7 @@ python run_gui.py --selftest
 - [Топологии ER и BA](docs/05_topolologii.md)
 - [Запуски, имена прогонов и таблицы](docs/06_zapuski_i_dannye.md)
 - [Карта кода и упрощённый запуск](docs/10_karta_koda_i_zapusk.md)
+- [Пять демонстрационных экспериментов](docs/11_eksperimenty_showcase.md)
 - [Технический аудит](docs/07_tehnicheskiy_audit.md)
 - [Повторный технический аудит](docs/09_tekhnicheskiy_audit_v2.md)
 - [Исправление дефектов аудита](docs/08_ispravleniya.md)
