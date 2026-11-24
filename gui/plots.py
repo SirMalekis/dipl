@@ -85,7 +85,7 @@ def plot_timeseries(fig: Figure, frame: pd.DataFrame, topology: str) -> None:
         return
 
     grid = fig.add_gridspec(2, 1, height_ratios=[2.0, 1.1], hspace=0.42,
-                            left=0.08, right=0.93, top=0.90, bottom=0.10)
+                            left=0.08, right=0.86, top=0.90, bottom=0.10)
     ax = fig.add_subplot(grid[0])
     style_axes(ax)
     time = _get(frame, "time")
@@ -118,7 +118,7 @@ def plot_timeseries(fig: Figure, frame: pd.DataFrame, topology: str) -> None:
     ax3.set_facecolor(PANEL)
     ax3.plot(time, _get(frame, "iplr_mean") * 1000.0, color=C_IPLR, lw=1.5,
              ls="--", label="IPLR ×1000")
-    ax3.set_ylabel("IPLR ×1000", color=C_IPLR)
+    ax3.set_ylabel("IPLR ×1000", color=C_IPLR, labelpad=8)
     ax3.tick_params(axis="y", colors=C_IPLR)
     for spine in ax3.spines.values():
         spine.set_color(GRID)
@@ -146,7 +146,7 @@ def plot_topology(fig: Figure, frame: pd.DataFrame) -> None:
         ("eff_qos_mean", "eff_qos_ci", "E_QoS", C_EQOS),
         ("qos_ratio_mean", "qos_ratio_ci", "Доля пар с QoS", C_Q),
         ("lcc_mean", "lcc_ci", "LCC", C_LCC),
-        ("phi_mean", "phi_ci", "φ_w", C_EPHYS),
+        ("phi_w_mean", "phi_w_ci", "φ_w", C_EPHYS),
     ]
     for i, (mean_col, ci_col, label, color) in enumerate(series):
         offsets = x + (i - (len(series) - 1) / 2) * width

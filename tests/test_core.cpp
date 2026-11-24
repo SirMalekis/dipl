@@ -184,6 +184,24 @@ int main() {
         check(er_structure.degree_cv < 0.6,
               "ER: умеренный разброс степеней");
 
+        TopologyParams ring;
+        ring.topology = "ring";
+        ring.num_nodes = 50;
+        ring.seed = 7;
+        ring.core_capacity = 1.0e9;
+        ring.access_capacity = 1.0e9;
+        ring.base_latency = 0.001;
+        const Graph ring_graph = createNetworkTopology(ring);
+        const TopologyStructure ring_structure =
+            analyzeTopology(ring_graph, ring);
+        check(ring_graph.num_edges == 100, "Ring: 100 направленных дуг");
+        check(ring_structure.num_edges == 50, "Ring: 50 неориентированных рёбер");
+        checkNear(ring_structure.avg_degree, 2.0, 1e-12,
+                  "Ring: средняя степень 2");
+        check(ring_structure.diameter == 25, "Ring: диаметр 25");
+        checkNear(ring_structure.avg_path_length, 12.755102, 1e-3,
+                  "Ring: средняя длина пути");
+
         TopologyParams ba;
         ba.topology = "barabasi_albert";
         ba.num_nodes = 100;
@@ -193,6 +211,7 @@ int main() {
         const TopologyStructure ba_structure =
             analyzeTopology(ba_graph, ba);
         check(ba_structure.max_degree >= 8, "BA: есть хабы");
+        check(ba_structure.min_degree >= 2, "BA: минимальная степень 2");
         check(ba_structure.degree_cv > 0.4,
               "BA: разброс степеней выше ER");
         check(ba_structure.gamma_est > 1.5 &&

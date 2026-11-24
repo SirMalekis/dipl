@@ -140,9 +140,11 @@ Graph createNetworkTopology(const TopologyParams& p) {
         for (int i = 1; i < n; ++i)
             addLink(g, 0, i, core_cap, latency());
     } else if (p.topology == "ring") {
+        // Замкнутое кольцо: у каждого узла ровно два соседа, включая
+        // замыкающее ребро (n-1, 0). addLink создаёт обе направленные дуги.
         for (int i = 0; i < n; ++i) {
             const int j = (i + 1) % n;
-            if (i < j) addLink(g, i, j, core_cap, latency());
+            addLink(g, i, j, core_cap, latency());
         }
     } else if (p.topology == "full_mesh") {
         for (int i = 0; i < n; ++i)
@@ -176,6 +178,10 @@ Graph createNetworkTopology(const TopologyParams& p) {
 
         std::uniform_int_distribution<size_t> pick(0, repeated.size() - 1);
         for (int v = m0; v < n; ++v) {
+            // Диапазон должен соответствовать текущему размеру repeated:
+            // иначе новые узлы выбирают только начальное ядро и получается
+            // «мультизвезда» вместо безмасштабной сети.
+            pick = std::uniform_int_distribution<size_t>(0, repeated.size() - 1);
             std::vector<int> targets;
             targets.reserve(m);
             int guard = 0;
